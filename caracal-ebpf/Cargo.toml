@@ -1,0 +1,16 @@
+[package]
+name = "caracal-ebpf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aya-ebpf = { workspace = true }
+aya-log-ebpf = { workspace = true }
+caracal-common = {path = "../caracal-common"}
+
+[build-dependencies]
+which = { workspace = true }
+
+[[bin]]
+name = "caracal"
+path = "src/main.rs"
