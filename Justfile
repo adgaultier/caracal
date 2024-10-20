@@ -23,5 +23,5 @@ build:
 
 # Profile
 profile:
-    CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph  --root --bin oryx
+    CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph  --root --bin stealth
 

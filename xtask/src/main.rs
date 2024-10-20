@@ -1,9 +1,6 @@
-mod build;
-mod build_ebpf;
 mod run;
 
-use std::process::exit;
-
+use anyhow::Result;
 use clap::Parser;
 
 #[derive(Debug, Parser)]
@@ -14,23 +11,13 @@ pub struct Options {
 
 #[derive(Debug, Parser)]
 enum Command {
-    BuildEbpf(build_ebpf::Options),
     Run(run::Options),
-    Build(build::Options),
 }
 
-fn main() {
-    let opts = Options::parse();
+fn main() -> Result<()> {
+    let Options { command } = Parser::parse();
 
-    use Command::*;
-    let ret = match opts.command {
-        BuildEbpf(opts) => build_ebpf::build_ebpf(opts),
-        Run(opts) => run::run(opts),
-        Build(opts) => build::build(opts),
-    };
-
-    if let Err(e) = ret {
-        eprintln!("{e:#}");
-        exit(1);
+    match command {
+        Command::Run(opts) => run::run(opts),
     }
 }

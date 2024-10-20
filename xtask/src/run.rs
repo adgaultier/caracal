@@ -1,58 +1,47 @@
-use std::process::Command;
+use std::{ffi::OsString, process::Command};
 
-use anyhow::Context as _;
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-
-use crate::{
-    build::{build, Options as BuildOptions},
-    build_ebpf::Architecture,
-};
+use xtask::AYA_BUILD_EBPF;
 
 #[derive(Debug, Parser)]
 pub struct Options {
-    /// Set the endianness of the BPF target
-    #[clap(default_value = "bpfel-unknown-none", long)]
-    pub bpf_target: Architecture,
-    /// Build and run the release target
+    /// Build and run the release target.
     #[clap(long)]
-    pub release: bool,
-    /// The command used to wrap your application
+    release: bool,
+    /// The command used to wrap your application.
     #[clap(short, long, default_value = "sudo -E")]
-    pub runner: String,
-    /// Arguments to pass to your application
-    #[clap(name = "args", last = true)]
-    pub run_args: Vec<String>,
+    runner: String,
+    /// Arguments to pass to your application.
+    #[clap(global = true, last = true)]
+    run_args: Vec<OsString>,
 }
 
-/// Build and run the project
-pub fn run(opts: Options) -> Result<(), anyhow::Error> {
-    // Build our ebpf program and the project
-    build(BuildOptions {
-        bpf_target: opts.bpf_target,
-        release: opts.release,
-    })
-    .context("Error while building project")?;
+/// Build and run the project.
+pub fn run(opts: Options) -> Result<()> {
+    let Options {
+        release,
+        runner,
+        run_args,
+    } = opts;
 
-    // profile we are building (release or debug)
-    let profile = if opts.release { "release" } else { "debug" };
-    let bin_path = format!("target/{profile}/strealth-ebpf");
-
-    // arguments to pass to the application
-    let mut run_args: Vec<_> = opts.run_args.iter().map(String::as_str).collect();
-
-    // configure args
-    let mut args: Vec<_> = opts.runner.trim().split_terminator(' ').collect();
-    args.push(bin_path.as_str());
-    args.append(&mut run_args);
-
-    // run the command
-    let status = Command::new(args.first().expect("No first argument"))
-        .args(args.iter().skip(1))
+    let mut cmd = Command::new("cargo");
+    cmd.env(AYA_BUILD_EBPF, "true");
+    cmd.args(["run", "--package", "stealth", "--config"]);
+    if release {
+        cmd.arg(format!("target.\"cfg(all())\".runner=\"{}\"", runner));
+        cmd.arg("--release");
+    } else {
+        cmd.arg(format!("target.\"cfg(all())\".runner=\"{}\"", runner));
+    }
+    if !run_args.is_empty() {
+        cmd.arg("--").args(run_args);
+    }
+    let status = cmd
         .status()
-        .expect("failed to run the command");
-
-    if !status.success() {
-        anyhow::bail!("Failed to run `{}`", args.join(" "));
+        .with_context(|| format!("failed to run {cmd:?}"))?;
+    if status.code() != Some(0) {
+        bail!("{cmd:?} failed: {status:?}")
     }
     Ok(())
 }

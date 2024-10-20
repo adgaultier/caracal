@@ -1,0 +1,114 @@
+warning: user-defined alias `xtask` is shadowing an external subcommand found at: `/home/rlmp/.cargo/bin/cargo-xtask`
+This was previously accepted but is being phased out; it will become a hard error in a future release.
+For more information, see issue #10049 <https://github.com/rust-lang/cargo/issues/10049>.
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+     Running `target/debug/xtask run`
+warning: stealth@0.1.0:    Compiling stealth-ebpf v0.1.0 (/mnt/data/Documents/projects/stealth_ebpf/stealth-ebpf)
+warning: stealth@0.1.0: warning: unused imports: `mem` and `str::from_utf8_unchecked`
+warning: stealth@0.1.0:  --> stealth-ebpf/src/main.rs:4:12
+warning: stealth@0.1.0:   |
+warning: stealth@0.1.0: 4 | use core::{mem, str::from_utf8_unchecked};
+warning: stealth@0.1.0:   |            ^^^  ^^^^^^^^^^^^^^^^^^^^^^^^
+warning: stealth@0.1.0:   |
+warning: stealth@0.1.0:   = note: `#[warn(unused_imports)]` on by default
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: warning: unused import: `task_struct`
+warning: stealth@0.1.0:  --> stealth-ebpf/src/main.rs:7:35
+warning: stealth@0.1.0:   |
+warning: stealth@0.1.0: 7 |     bindings::{bpf_attr, bpf_cmd, task_struct},
+warning: stealth@0.1.0:   |                                   ^^^^^^^^^^^
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: warning: function `ptr_at` is never used
+warning: stealth@0.1.0:   --> stealth-ebpf/src/main.rs:19:4
+warning: stealth@0.1.0:    |
+warning: stealth@0.1.0: 19 | fn ptr_at<T>(start: usize, offset: usize) -> Result<*const T, ()> {
+warning: stealth@0.1.0:    |    ^^^^^^
+warning: stealth@0.1.0:    |
+warning: stealth@0.1.0:    = note: `#[warn(dead_code)]` on by default
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: warning: function `stealthTracepoint` should have a snake case name
+warning: stealth@0.1.0:   --> stealth-ebpf/src/main.rs:24:4
+warning: stealth@0.1.0:    |
+warning: stealth@0.1.0: 24 | fn stealthTracepoint(ctx: TracePointContext) -> Result<u32, u32> {
+warning: stealth@0.1.0:    |    ^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `stealth_tracepoint`
+warning: stealth@0.1.0:    |
+warning: stealth@0.1.0:    = note: `#[warn(non_snake_case)]` on by default
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: warning: function `stealthProbe` should have a snake case name
+warning: stealth@0.1.0:   --> stealth-ebpf/src/main.rs:46:4
+warning: stealth@0.1.0:    |
+warning: stealth@0.1.0: 46 | fn stealthProbe(ctx: ProbeContext) -> Result<u32, u32> {
+warning: stealth@0.1.0:    |    ^^^^^^^^^^^^ help: convert the identifier to snake case: `stealth_probe`
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0: 
+warning: stealth@0.1.0:     Finished `release` profile [optimized] target(s) in 0.39s
+warning: unused import: `fs`
+ --> stealth/src/main.rs:1:11
+  |
+1 | use std::{fs, thread, time::Duration};
+  |           ^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `anyhow::Context as _`
+ --> stealth/src/main.rs:3:5
+  |
+3 | use anyhow::Context as _;
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Btf` and `TracePoint`
+ --> stealth/src/main.rs:6:24
+  |
+6 |     programs::{KProbe, TracePoint},
+  |                        ^^^^^^^^^^
+7 |     Btf,
+  |     ^^^
+
+warning: unused import: `log::error`
+ --> stealth/src/main.rs:9:5
+  |
+9 | use log::error;
+  |     ^^^^^^^^^^
+
+warning: unused variable: `progs_id`
+  --> stealth/src/main.rs:68:9
+   |
+68 |     let progs_id = Arg::parse()
+   |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_progs_id`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `err`
+   --> stealth/src/main.rs:113:24
+    |
+113 |             if let Err(err) = prog_skip_map.insert(&p, &0, 0) {
+    |                        ^^^ help: if this is intentional, prefix it with an underscore: `_err`
+
+warning: `stealth` (bin "stealth") generated 6 warnings (run `cargo fix --bin "stealth"` to apply 4 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+     Running `sudo -E target/debug/stealth`
+Error: `perf_event_open` failed
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: anyhow::error::<impl core::convert::From<E> for anyhow::Error>::from
+             at /home/rlmp/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anyhow-1.0.90/src/backtrace.rs:27:14
+   1: <core::result::Result<T,F> as core::ops::try_trait::FromResidual<core::result::Result<core::convert::Infallible,E>>>::from_residual
+             at /mnt/data/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/result.rs:2010:27
+   2: stealth::main::{{closure}}
+             at ./stealth/src/main.rs:104:5
+   3: tokio::runtime::park::CachedParkThread::block_on::{{closure}}
+             at /home/rlmp/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.40.0/src/runtime/park.rs:281:63
+Error: AYA_BUILD_EBPF="true" "cargo" "run" "--package" "stealth" "--config" "target.\"cfg(all())\".runner=\"sudo -E\"" failed: ExitStatus(unix_wait_status(256))
+
+Stack backtrace:
+   0: anyhow::error::<impl anyhow::Error>::msg
+             at /home/rlmp/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anyhow-1.0.90/src/backtrace.rs:27:14
+   1: anyhow::__private::format_err
+             at /home/rlmp/.cargo/registry/src/index.crates.io-6f17d22bba15001f/anyhow-1.0.90/src/lib.rs:694:13
