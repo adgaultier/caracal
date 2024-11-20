@@ -92,7 +92,8 @@ fn main() {
         ]);
 
         cmd.env("CARGO_CFG_BPF_TARGET_ARCH", arch);
-
+        // MANDATORY FOR bpf_loop
+        //cmd.env("RUSTFLAGS", "-C debuginfo=2 -C link-arg=--btf");
         // Workaround to make sure that the rust-toolchain.toml is respected.
         for key in ["RUSTUP_TOOLCHAIN", "RUSTC"] {
             cmd.env_remove(key);
