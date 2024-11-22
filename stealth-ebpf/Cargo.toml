@@ -11,7 +11,6 @@ aya-log-ebpf = { workspace = true }
 
 [build-dependencies]
 which = { workspace = true }
-xtask = { path = "../xtask" }
 
 [[bin]]
 name = "stealth"

@@ -5,21 +5,18 @@ default:
     just --list
 
 
-# Run debug
-run-debug:
-    echo "" > log-file
-    RUST_LOG=info RUST_BACKTRACE=1 cargo xtask run 2> log-file
+
+build-ebpf:
+    cd stealth-ebpf && RUST_BACKTRACE=1 cargo build  --release
 
 run:
-    cargo xtask run
+    just build-ebpf
+    RUST_BACKTRACE=1 cargo build --release 
+    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID
 
-# Run oryx release
-release:
-    cargo xtask run --release
 
-# Build
-build:
-    cargo xtask build
+
+
 
 # Profile
 profile:

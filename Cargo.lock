@@ -87,8 +87,7 @@ checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
 [[package]]
 name = "aya"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d18bc4e506fbb85ab7392ed993a7db4d1a452c71b75a246af4a80ab8c9d2dd50"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -98,15 +97,14 @@ dependencies = [
  "log",
  "object",
  "once_cell",
- "thiserror",
+ "thiserror 2.0.3",
  "tokio",
 ]
 
 [[package]]
 name = "aya-ebpf"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8dbaf5409a1a0982e5c9bdc0f499a55fe5ead39fe9c846012053faf0d404f73"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya-ebpf-bindings",
  "aya-ebpf-cty",
@@ -117,8 +115,7 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-bindings"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "783dc1a82a3d71d83286165381dcc1b1d41643f4b110733d135547527c000a9a"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya-ebpf-cty",
 ]
@@ -126,14 +123,12 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-cty"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cce099aaf3abb89f9a1f8594ffe07fa53738ebc2882fac624d10d9ba31a1b10"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 
 [[package]]
 name = "aya-ebpf-macros"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f47f7b4a75eb5f1d7ba0fb5628d247b1cf20388658899177875dabdda66865"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "proc-macro-error",
  "proc-macro2",
@@ -144,22 +139,20 @@ dependencies = [
 [[package]]
 name = "aya-log"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b600d806c1d07d3b81ab5f4a2a95fd80f479a0d3f1d68f29064d660865f85f02"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya",
  "aya-log-common",
  "bytes",
  "log",
- "thiserror",
+ "thiserror 2.0.3",
  "tokio",
 ]
 
 [[package]]
 name = "aya-log-common"
 version = "0.1.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "befef9fe882e63164a2ba0161874e954648a72b0e1c4b361f532d590638c4eec"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "num_enum",
 ]
@@ -167,8 +160,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae348f459df78a79e5cd5e164b6562b927033b97ca3b033605b341a474f44510"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -178,8 +170,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d8251a75f56077db51892041aa6b77c70ef2723845d7a210979700b2f01bc4"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
@@ -191,8 +182,7 @@ dependencies = [
 [[package]]
 name = "aya-log-parser"
 version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14b102eb5c88c9aa0b49102d3fbcee08ecb0dfa81014f39b373311de7a7032cb"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "aya-log-common",
 ]
@@ -200,15 +190,13 @@ dependencies = [
 [[package]]
 name = "aya-obj"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c51b96c5a8ed8705b40d655273bc4212cbbf38d4e3be2788f36306f154523ec7"
+source = "git+https://github.com/aya-rs/aya.git?branch=main#9e3de444ecef2856fe0f37c3306e4b391f076fe7"
 dependencies = [
  "bytes",
- "core-error",
  "hashbrown",
  "log",
  "object",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -267,7 +255,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -336,15 +324,6 @@ name = "colorchoice"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
-
-[[package]]
-name = "core-error"
-version = "0.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efcdb2972eb64230b4c50646d8498ff73f5128d196a90c7236eec4cbe8619b8f"
-dependencies = [
- "version_check",
-]
 
 [[package]]
 name = "crc32fast"
@@ -745,7 +724,6 @@ dependencies = [
  "log",
  "stealth-ebpf",
  "tokio",
- "xtask",
 ]
 
 [[package]]
@@ -755,7 +733,6 @@ dependencies = [
  "aya-ebpf",
  "aya-log-ebpf",
  "which",
- "xtask",
 ]
 
 [[package]]
@@ -781,7 +758,16 @@ version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c006c85c7651b3cf2ada4584faa36773bd07bac24acfb39f3c431b36d7e667aa"
+dependencies = [
+ "thiserror-impl 2.0.3",
 ]
 
 [[package]]
@@ -789,6 +775,17 @@ name = "thiserror-impl"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f077553d607adc1caf65430528a576c757a71ed73944b66ebb58ef2bbd243568"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -955,11 +952,3 @@ name = "winsafe"
 version = "0.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
-
-[[package]]
-name = "xtask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
-]
