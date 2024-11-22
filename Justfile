@@ -16,7 +16,8 @@ run:
 
 
 
-
+test:
+    strace procs 2> test 1>/dev/null && cat test | grep getdents
 
 # Profile
 profile:
