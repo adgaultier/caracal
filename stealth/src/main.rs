@@ -30,6 +30,7 @@ impl HiddenPid {
         let mut bytes = [0u8; MAX_PID_LENGTH];
         let len = str_repr.len().min(MAX_PID_LENGTH);
         bytes[..len].copy_from_slice(str_repr.as_bytes());
+        dbg!("{}", bytes);
         Self { bytes, len }
     }
 }
@@ -38,6 +39,7 @@ impl HiddenPid {
 pub struct QueuedDirent {
     pub idx: u32,
     pub bpos: u64,
+    pub d_off: i64,
     pub d_reclen: u16,
     pub d_type: u8,
     pub d_name: [u8; 10],
@@ -201,32 +203,17 @@ async fn main() -> anyhow::Result<()> {
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
-    let mut parsed: Queue<_, QueuedDirent> =
-        Queue::try_from(ebpf.take_map("PARSED").unwrap()).unwrap();
-    let mut ctr = 0;
-    while let Ok(k) = parsed.pop(0) {
-        // let last_byte = {
-        //     let mut lbyte = 0;
-        //     for (idx, &b) in k.iter().rev().enumerate() {
-        //         if b != 0 {
-        //             lbyte = k.len().saturating_sub(1 + idx);
-        //             break;
-        //         };
-        //     }
-        //     lbyte
-        // };
-        // info!(
-        //     "{} last byte={}={}",
-        //     unsafe { std::str::from_utf8_unchecked(&k) },
-        //     k[last_byte],
-        //     unsafe { std::str::from_utf8_unchecked(&k[last_byte..]) }
-        // );
-        info!("{:#?} {}", k, unsafe {
-            std::str::from_utf8_unchecked(&k.d_name)
-        });
-        ctr += 1;
-    }
+    // let mut parsed: Queue<_, QueuedDirent> =
+    //     Queue::try_from(ebpf.take_map("PARSED").unwrap()).unwrap();
+    // let mut ctr = 0;
+    // while let Ok(k) = parsed.pop(0) {
+    //     info!("{:#?} {}", k, unsafe {
+    //         std::str::from_utf8_unchecked(&k.d_name)
+    //     });
+    //     ctr += 1;
+    // }
+    //info!("{} pid parsed", ctr);
     println!("Exiting...");
-    info!("{} pid parsed", ctr);
+
     Ok(())
 }
