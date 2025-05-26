@@ -6,7 +6,7 @@ use aya::{
     Ebpf,
 };
 use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
-
+use sysinfo::{Pid, Process, System};
 #[inline]
 pub fn list_active_programs() -> Vec<u32> {
     let iter = ProgInfoIter::default();
@@ -99,10 +99,32 @@ pub fn fetch_pids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, 
     Ok(BpfProgInfos { prog_ids, map_ids })
 }
 
-pub fn get_parent_pid(pid: u32) -> u32 {
-    let stat_path = format!("/proc/{}/stat", pid);
-    let stat_content =
-        std::fs::read_to_string(&stat_path).expect("Failed to read /proc/<pid>/stat");
-    let fields: Vec<&str> = stat_content.split_whitespace().collect();
-    fields[3].parse::<u32>().expect("Invalid PPID format")
+pub fn list_threads(proc: &Process) -> Vec<Pid> {
+    let mut threads: Vec<Pid> = vec![];
+    if let Some(tasks) = proc.tasks() {
+        for pid in tasks {
+            threads.push(*pid)
+        }
+    }
+    threads
+}
+pub fn get_descendants(sys: &System, pid: Pid) -> Vec<Pid> {
+    let mut descendants = Vec::new();
+    let mut queue: Vec<Pid> = vec![pid];
+
+    let mut threads: Vec<Pid> = vec![];
+    while let Some(current) = queue.pop() {
+        if let Some(proc) = sys.process(current) {
+            threads.extend(list_threads(proc))
+        };
+
+        for (child_pid, proc) in sys.processes() {
+            if proc.parent() == Some(current) && !threads.contains(&proc.pid()) {
+                descendants.push(*child_pid);
+                queue.push(*child_pid);
+            }
+        }
+    }
+
+    descendants
 }
