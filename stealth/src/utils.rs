@@ -51,7 +51,7 @@ impl From<(&str, &str)> for SyscallTracepoint {
     }
 }
 
-impl<'a> Builder<'a> {
+impl Builder<'_> {
     pub fn build(&mut self) -> Result<Vec<ProgramInfo>, Error> {
         let mut programs_info = vec![];
         for tp in &self.tracepoints {

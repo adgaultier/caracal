@@ -1,7 +1,6 @@
 set export
 
-# List available targets
-default:
+_default:
     just --list
 
 
@@ -12,6 +11,7 @@ build-ebpf:
 run:
     just build-ebpf
     RUST_BACKTRACE=1 cargo build --release 
+    echo $PPID
     RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID
 
 

