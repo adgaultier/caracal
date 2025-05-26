@@ -12,12 +12,12 @@ run:
     just build-ebpf
     RUST_BACKTRACE=1 cargo build --release 
     echo $PPID
-    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID 
+    RUST_LOG=debug sudo -E ./target/release/stealth --pid $PPID 
 
 
 
 test:
-    strace procs 2> test 1>/dev/null && cat test | grep getdents
+    strace ps aux 2> test 1>/dev/null && cat test | grep getdents
 
 # Profile
 profile:

