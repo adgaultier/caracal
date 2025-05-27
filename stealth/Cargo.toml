@@ -18,12 +18,13 @@ log = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }
 libbpf-rs = "0.24.6"
 sysinfo ="0.35.1"
-
+stealth-common = {path = "../stealth-common"}
 
 
 [build-dependencies]
 cargo_metadata = { workspace = true }
 stealth-ebpf = { path = "../stealth-ebpf" }
+
 
 
 [[bin]]

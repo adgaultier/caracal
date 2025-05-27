@@ -8,11 +8,11 @@ _default:
 build-ebpf:
     cd stealth-ebpf && RUST_BACKTRACE=1 cargo build  --release
 
-run:
+
+run pid="1337":
     just build-ebpf
     RUST_BACKTRACE=1 cargo build --release 
-    echo $PPID
-    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID 
+    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID,{{pid}}
 
 
 

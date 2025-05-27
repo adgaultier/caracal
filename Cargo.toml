@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "stealth",  "stealth-ebpf"]
+members = [ "stealth",  "stealth-ebpf","stealth-common"]
 default-members = ["stealth"]
 
 [workspace.dependencies]

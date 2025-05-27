@@ -750,10 +750,15 @@ dependencies = [
  "libbpf-rs",
  "libc",
  "log",
+ "stealth-common",
  "stealth-ebpf",
  "sysinfo",
  "tokio",
 ]
+
+[[package]]
+name = "stealth-common"
+version = "0.1.0"
 
 [[package]]
 name = "stealth-ebpf"
@@ -761,6 +766,7 @@ version = "0.1.0"
 dependencies = [
  "aya-ebpf",
  "aya-log-ebpf",
+ "stealth-common",
  "which",
 ]
 

