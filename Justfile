@@ -12,7 +12,7 @@ build-ebpf:
 run pid="1337":
     just build-ebpf
     RUST_BACKTRACE=1 cargo build --release 
-    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID,{{pid}}
+    RUST_LOG=info sudo -E ./target/release/stealth --pid $PPID,{{pid}} --bpf-prog-id 74,75
 
 
 
