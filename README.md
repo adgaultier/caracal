@@ -1,8 +1,8 @@
 <div align="center">
   <h1>Caracal</h1>
   <h3>Make your (eBPF🐝)  programs stealthier </h3>
-  <img src="https://github.com/user-attachments/assets/089060da-1a14-475d-8aa3-e1bfae15e8f7" style="width: 30%; height: auto;">
-    <p><small><i>The caracal cat is one of Africa's ultimate hunters, a stealthy cat with an exceptional ability to hunt out prey on the savanna</i></small></p>
+  <img src="https://github.com/user-attachments/assets/089060da-1a14-475d-8aa3-e1bfae15e8f7" style="width: 60%; height: auto;">
+    <p><small><i>The caracal cat is one of Africa's ultimate hunters,<br> a stealthy cat with an exceptional ability to hunt out prey on the savanna</i></small></p>
 
 </div>
 
@@ -42,7 +42,7 @@ This command will produce  `caracal` executable in `target/release` that you can
 To launch caracal, lauch as sudo:
 
 ```
-caracal --pid <comma separated list of pids> --bpf-prog-id <comma separated list of bpf prog ids> 
+caracal --pid <comma-separated list of pids> --bpf-prog-id <comma-separated list of bpf prog ids> 
 ```
 
 Example:
