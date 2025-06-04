@@ -29,7 +29,7 @@ pub fn list_active_maps() -> Vec<u32> {
 pub fn write_to_tracefs(message: &str, path: &str) -> std::io::Result<()> {
     let tracefs_path = Path::new(path);
     let mut file = OpenOptions::new().write(true).open(tracefs_path)?;
-    write!(file, "{}", message)?;
+    write!(file, "{message}")?;
     Ok(())
 }
 

