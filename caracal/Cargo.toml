@@ -16,7 +16,6 @@ env_logger = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }
-libbpf-rs = "0.24.6"
 sysinfo ="0.35.1"
 caracal-common = {path = "../caracal-common"}
 
