@@ -1,0 +1,61 @@
+---
+name: Release
+on:
+  push:
+    tags:
+      - "*"
+jobs:
+  build_release:
+    permissions:
+      contents: write
+    continue-on-error: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: x86_64-unknown-linux-musl,x86_64-unknown-linux-gnu
+          components: clippy rustfmt
+
+      - name: Install the dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y podman binutils-aarch64-linux-gnu musl-tools
+          cargo install  cross
+          cargo install  bpf-linker
+
+      - run: rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+
+      - name: Build ebpf
+        run: |
+          cd caracal-ebpf && cargo build  --release
+
+      - name: Build for x86_64 musl
+        run: |
+          cargo build --target x86_64-unknown-linux-musl --release
+          cp target/x86_64-unknown-linux-musl/release/caracal caracal-x86_64-unknown-linux-musl
+
+      - name: Build for x86_64 gnu
+        run: |
+          cargo build --target x86_64-unknown-linux-gnu --release
+          cp target/x86_64-unknown-linux-gnu/release/caracal caracal-x86_64-unknown-linux-gnu
+
+      - name: Build for arm64 musl
+        run: |
+          CROSS_CONTAINER_ENGINE=podman cross build --target aarch64-unknown-linux-musl --release
+          cp target/aarch64-unknown-linux-musl/release/caracal caracal-aarch64-unknown-linux-musl
+
+      # - name: Build for arm64 gnu
+      #   run: |
+      #     CROSS_CONTAINER_ENGINE=podman cross build --target aarch64-unknown-linux-gnu --release
+      #     cp target/aarch64-unknown-linux-gnu/release/caracal caracal-aarch64-unknown-linux-gnu
+
+
+      - name: Upload Binary
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "caracal*"
+          body: |
+            [Release.md](${{ github.server_url }}/${{ github.repository }}/blob/main/Release.md)

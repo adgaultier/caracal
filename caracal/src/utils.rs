@@ -2,28 +2,26 @@ use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
 
 use anyhow::{anyhow, Error};
 use aya::{
+    maps::loaded_maps,
     programs::{loaded_programs, ProgramInfo, TracePoint},
     Ebpf, Pod,
 };
 use caracal_common::MAX_PID_LENGTH;
-use libbpf_rs::query::{MapInfoIter, ProgInfoIter};
-use log::{debug, error};
+use log::debug;
 use sysinfo::{Pid, Process, System};
 #[inline]
 pub fn list_active_programs() -> Vec<u32> {
-    let iter = ProgInfoIter::default();
     let mut active_programs = Vec::<u32>::new();
-    for prog in iter {
-        active_programs.push(prog.id);
+    for prog in loaded_programs().filter_map(Result::ok) {
+        active_programs.push(prog.id());
     }
     active_programs
 }
 #[inline]
 pub fn list_active_maps() -> Vec<u32> {
-    let iter = MapInfoIter::default();
     let mut active_maps = Vec::<u32>::new();
-    for prog in iter {
-        active_maps.push(prog.id);
+    for map in loaded_maps().filter_map(Result::ok) {
+        active_maps.push(map.id());
     }
     active_maps
 }
@@ -31,7 +29,7 @@ pub fn list_active_maps() -> Vec<u32> {
 pub fn write_to_tracefs(message: &str, path: &str) -> std::io::Result<()> {
     let tracefs_path = Path::new(path);
     let mut file = OpenOptions::new().write(true).open(tracefs_path)?;
-    write!(file, "{}", message)?;
+    write!(file, "{message}")?;
     Ok(())
 }
 
@@ -118,16 +116,9 @@ pub fn fetch_progs_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgIn
 
 pub fn get_progs_info_from_progs_ids(prog_ids: Vec<u32>) -> Vec<ProgramInfo> {
     let mut prog_info: Vec<ProgramInfo> = vec![];
-    for p in loaded_programs() {
-        match p {
-            Ok(prog) => {
-                if prog_ids.contains(&prog.id()) {
-                    prog_info.push(prog)
-                }
-            }
-            Err(_) => {
-                error!("Error iterating loaded bpf programs")
-            }
+    for p in loaded_programs().filter_map(Result::ok) {
+        if prog_ids.contains(&p.id()) {
+            prog_info.push(p)
         }
     }
     prog_info

@@ -7,9 +7,14 @@
 </div>
 
 
-Caracal is a rust implementation of ebpf program that enables you to hide: 
-- bpf programs and maps
-- procesess
+Caracal is a rust implementation of known eBPF techniques that: 
+- hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...
+- hide target procesess             → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
+
+<br>
+
+It targets specifically `bpf` and `getdents64` syscalls
+
 
 
 ## 🚀 Setup
@@ -21,7 +26,7 @@ You need a Linux based OS.
 To build from source, make sure you have:
 
 - [bpf-linker](https://github.com/aya-rs/bpf-linker) installed.
-- [Rust](https://www.rust-lang.org/tools/install) installed with `nightly` toolchain.
+- [rust](https://www.rust-lang.org/tools/install) installed with `nightly` toolchain.
 
 
 #### 1. Build ebpf program
@@ -36,32 +41,37 @@ cargo build --release
 ```
 This command will produce  `caracal` executable in `target/release` that you can add to your`$PATH`
 
+
+### 📥 Binary release
+
+You can download the pre-built binaries from the release page [release page](https://github.com/adgaultier/caracal/releases)
 <br>
 
 ## 🪄 Usage
-To launch caracal, lauch as sudo:
+Run `caracal` with  root privileges:
 
 ```
-caracal --pid <comma-separated list of pids> --bpf-prog-id <comma-separated list of bpf prog ids> 
+caracal --pid <pids> --bpf-prog-id <bpf-ids>
 ```
+- `<pids>`: List of process IDs to hide (comma-separated, e.g., 123,456)
+- `<bpf-ids>`: List of eBPF program IDs to hide (comma-separated, e.g., 789,101)
+
 
 Example:
 ```
-RUST_LOG=info sudo -E caracal \
-               --pid $PPID,1337 \
-               --bpf-prog-id  23,24,26
+RUST_LOG=info sudo -E caracal --pid $PPID,1337  --bpf-prog-id  23,24,26
 ```
 
 will hide:
-- the current process &  its child processes
-- 1337 process & its child processes
-- caracal bpf program and maps
-- 23,24,26 bpf programs and their associated maps
+- `caracal` launching process & its children
+- 1337 process & its children
+- `caracal` eBPF program & maps
+- 23,24,26 eBPF programs & maps
 
 
 ## ⚠️ Disclaimer
 
-`Caracal` is developed for educational purposes only
+`caracal` is developed for educational purposes only
 
 <br>
 
