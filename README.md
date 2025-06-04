@@ -36,6 +36,10 @@ cargo build --release
 ```
 This command will produce  `caracal` executable in `target/release` that you can add to your`$PATH`
 
+
+### 📥 Binary release
+
+You can download the pre-built binaries from the release page [release page](https://github.com/adgaultier/caracal/releases)
 <br>
 
 ## 🪄 Usage
