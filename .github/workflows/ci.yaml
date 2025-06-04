@@ -11,7 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@just
-
       - uses: cargo-bins/cargo-binstall@main
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -24,7 +23,7 @@ jobs:
         run: |
           just build-ebpf
           cargo build --release
-          
+
       - name: Linting
         run: |
           cargo fmt --all -- --check
