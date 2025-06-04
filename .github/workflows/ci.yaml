@@ -19,13 +19,15 @@ jobs:
           components: clippy rustfmt
 
       - run: cargo binstall -y bpf-linker
-      - name: Linting
-        run: |
-          cargo clippy -p caracal-ebpf  -- -D warnings
-          cargo clippy --workspace --all-features --exclude caracal-ebpf  -- -D warnings
-          cargo fmt --all -- --check
 
       - name: Build Caracal
         run: |
           just build-ebpf
           cargo build --release
+          
+      - name: Linting
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -p caracal-ebpf  -- -D warnings
+          cargo clippy --workspace --all-features --exclude caracal-ebpf  -- -D warnings
+          
