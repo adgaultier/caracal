@@ -7,9 +7,9 @@
 </div>
 
 
-Caracal is a rust implementation of known eBPF techniques that: 
+Caracal is a rust implementation of known eBPF [techniques](#sources) that: 
 - hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...
-- hide target procesess             → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
+- hide target processes            → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
 
 <br>
 
@@ -44,7 +44,7 @@ This command will produce  `caracal` executable in `target/release` that you can
 
 ### 📥 Binary release
 
-You can download the pre-built binaries from the release page [release page](https://github.com/adgaultier/caracal/releases)
+You can download the pre-built binaries from the [release page](https://github.com/adgaultier/caracal/releases)
 <br>
 
 ## 🪄 Usage
@@ -75,6 +75,9 @@ will hide:
 
 <br>
 
+## Sources
+- https://eunomia.dev/tutorials/24-hide/
+- https://www.acceis.fr/ebpf-in-practice-pid-concealment-part-2/
 
 
 ## ✍️ Authors
