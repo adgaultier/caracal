@@ -17,7 +17,7 @@ static HIDDEN_BPF_OBJ: HashMap<u32, [u32; 32]> =
     HashMap::<u32, [u32; MAX_BPF_OBJ as usize]>::with_max_entries(2, 0);
 
 #[tracepoint]
-pub fn caracal_bpf(ctx: TracePointContext) -> Result<u32, u32> {
+pub fn bpf(ctx: TracePointContext) -> Result<u32, u32> {
     let cmd: u32 = unsafe { ctx.read_at(16).map_err(|_| 0u32)? };
     let mut_attr: *mut bpf_attr = unsafe { ctx.read_at(24).map_err(|_| 0u32)? };
     let mut attr_cpy: bpf_attr = unsafe { bpf_probe_read(mut_attr).map_err(|_| 1u32)? };

