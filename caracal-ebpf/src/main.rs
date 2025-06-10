@@ -7,4 +7,4 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[allow(unused_imports)]
-use caracal_ebpf::{bpf::bpf, pid::*, stat::*, sys::*};
+use caracal_ebpf::{bpf::bpf, deunhide::stat::*, deunhide::sys::*, pid::*};

