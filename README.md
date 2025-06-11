@@ -6,6 +6,8 @@
 
 </div>
 
+⚡ Powered by [Aya](https://aya-rs.dev)🐝
+
 ## 💡 Overview
 Caracal is a Rust implementation of eBPF techniques that: 
 1. hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...

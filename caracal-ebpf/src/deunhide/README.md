@@ -1,7 +1,7 @@
 
 [Back to Readme](../../../README.md)
 
-Based by : https://www.unhide-forensics.info/
+Based on : https://www.unhide-forensics.info/
 
 
 Here the goal is to counter brute force methods <br>
@@ -62,4 +62,4 @@ You can then run the test on a pid hidden by caracal (launch caracal with `RUST_
 You can inspect with strace to confirm you get only -3 (process not found errors) 
 
 ### Unhide
-You can also install and use [unhide](https://github.com/YJesus/Unhide) directly to run the bruteforce tests and verify no hidden pids has been detected
+You can also install and use [unhide](https://github.com/YJesus/Unhide) directly to run the bruteforce tests and verify no hidden pid has been detected
