@@ -176,9 +176,9 @@ pub fn get_descendants(sys: &System, pid: Pid) -> (Vec<Pid>, Vec<Pid>) {
     let mut threads: Vec<Pid> = vec![];
     while let Some(current) = queue.pop() {
         if let Some(proc) = sys.process(current) {
-            threads.extend(list_threads(proc, &sys))
+            threads.extend(list_threads(proc, sys))
         } else {
-            warn!("pid {} not found", current)
+            warn!("pid {current} not found")
         }
 
         for (child_pid, proc) in sys.processes() {
