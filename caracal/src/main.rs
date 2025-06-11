@@ -2,8 +2,9 @@ use std::{thread, time::Duration};
 
 use aya::{maps::HashMap, EbpfLoader};
 use caracal::utils::{
-    fetch_progs_ids_map_ids, get_descendants, get_progs_info_from_progs_ids, list_active_maps,
-    list_active_programs, write_to_tracefs, Builder, Kprobe, SyscallTracepoint,
+    fetch_progs_ids_map_ids, get_descendants, get_progs_info_from_progs_ids,
+    is_function_error_injection_supported, list_active_maps, list_active_programs,
+    write_to_tracefs, Builder, Kprobe, SyscallTracepoint,
 };
 use caracal_common::{MAX_BPF_OBJ, MAX_HIDDEN_PIDS};
 use clap::Parser;
@@ -53,8 +54,6 @@ async fn main() -> anyhow::Result<()> {
 
     #[cfg(target_arch = "x86_64")]
     let kprobes = {
-        use caracal::utils::is_function_error_injection_supported;
-
         match is_function_error_injection_supported() {
             Ok(true) => vec![
                 Kprobe::from(("x64_sys_kill_exit", "__x64_sys_kill")),
@@ -92,7 +91,11 @@ async fn main() -> anyhow::Result<()> {
                     "__x64_sys_sched_getaffinity",
                 )),
             ],
-            _ => vec![],
+            _ => {
+                warn!("CONFIG_BPF_KPROBE_OVERRIDE is not supported by host kernel");
+                warn!("deunhide kprobes won't be set");
+                vec![]
+            }
         }
     };
 

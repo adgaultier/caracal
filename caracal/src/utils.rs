@@ -13,6 +13,7 @@ use aya::{
     Ebpf, Pod,
 };
 use caracal_common::MAX_PID_LENGTH;
+use flate2::read::GzDecoder;
 use log::{debug, info, warn};
 use regex::Regex;
 use sysinfo::{Pid, Process, System};
@@ -209,7 +210,13 @@ pub fn get_descendants(sys: &System, pid: Pid) -> (Vec<Pid>, Vec<Pid>) {
     (descendants_pid, threads)
 }
 
-pub fn is_function_error_injection_supported() -> Result<bool, u8> {
+fn locate_config_file() -> Result<Box<dyn BufRead>, u8> {
+    // Try gzip version
+    if let Ok(file) = File::open("/proc/config.gz") {
+        let gz = GzDecoder::new(file);
+        return Ok(Box::new(BufReader::new(gz)));
+    }
+
     let kernel = String::from_utf8(
         Command::new("uname")
             .arg("-r")
@@ -220,13 +227,17 @@ pub fn is_function_error_injection_supported() -> Result<bool, u8> {
     .map_err(|_| 0)?
     .trim()
     .to_string();
-
     let path = format!("/boot/config-{kernel}");
-    let file = File::open(&path).map_err(|_| 0)?;
-    let reader = BufReader::new(file);
+    if let Ok(file) = File::open(path) {
+        return Ok(Box::new(BufReader::new(file)));
+    }
 
-    let pattern = Regex::new(r"CONFIG_FUNCTION_ERROR_INJECTION").unwrap();
+    Err(0)
+}
 
+pub fn is_function_error_injection_supported() -> Result<bool, u8> {
+    let reader: Box<dyn BufRead + 'static> = locate_config_file()?;
+    let pattern = Regex::new(r"FUNCTION_ERROR_INJECTION").unwrap();
     for line in reader.lines() {
         let line = line.map_err(|_| 0)?;
         if pattern.is_match(&line) {
@@ -236,7 +247,5 @@ pub fn is_function_error_injection_supported() -> Result<bool, u8> {
             }
         }
     }
-    warn!("CONFIG_BPF_KPROBE_OVERRIDE is not supported by host kernel");
-    warn!("deunhide kprobes won't be set");
     Ok(false)
 }

@@ -19,7 +19,7 @@ tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net"
 sysinfo ="0.35.1"
 caracal-common = {path = "../caracal-common"}
 regex = "1"
-
+flate2 = "1"
 [build-dependencies]
 cargo_metadata = { workspace = true }
 caracal-ebpf = { path = "../caracal-ebpf" }

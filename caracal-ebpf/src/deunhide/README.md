@@ -1,4 +1,6 @@
 
+[Back to Readme](../../../README.md)
+
 Based by : https://www.unhide-forensics.info/
 
 
@@ -12,10 +14,12 @@ Hooked on syscalls:
 - sys_enter_chdir
 - sys_enter_openat
 
+-> If syscall targets a hidden pid , we replace the filename pointer with a null byte, which will then trigger a `-ESRCH` error in the downstream functions executions
 
 ### Kprobes 
-- ⚠️ available only on x86_64
-- ⚠️ will be activated only if host has `CONFIG_BPF_KPROBE_OVERRIDE=y`
+> ⚠️ available only on x86_64
+
+> ⚠️ will be activated only if host has `CONFIG_BPF_KPROBE_OVERRIDE=y`
 
 Hooked on "__x64" syscalls generated functions:
 
@@ -28,6 +32,8 @@ Hooked on "__x64" syscalls generated functions:
 - sched_rr_get_interval
 - sched_getaffinity
 
+
+-> If function targets  a hidden pid , we use `bpf_override_return` to replace the return with `-ESRCH`   
 
 
 ### Tests

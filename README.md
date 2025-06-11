@@ -1,20 +1,22 @@
 <div align="center">
   <h1>Caracal</h1>
-  <h3>Make your (eBPF🐝)  programs stealthier </h3>
+  <h3>Make your programs stealthier </h3>
   <img src="https://github.com/user-attachments/assets/089060da-1a14-475d-8aa3-e1bfae15e8f7" style="width: 60%; height: auto;">
     <p><small><i>The caracal cat is one of Africa's ultimate hunters,<br> a stealthy cat with an exceptional ability to hunt out prey on the savanna</i></small></p>
 
 </div>
 
+## 💡 Overview
+Caracal is a Rust implementation of eBPF techniques that: 
+1. hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...
+2. hide target processes             → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
+3. are resilient to some "unhiding" bruteforce techniques
 
-Caracal is a rust implementation of known eBPF [techniques](#sources) that: 
-- hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...
-- hide target processes            → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
-- is resilient to some `unhiding` bruteforce techniques (see [here](caracal-ebpf/src/deunhide/README.md))
-<br>
 
-It targets specifically `bpf` and `getdents64` syscalls
-
+## 📚 Documentation
+Jump to:
+- [Focus on 1 & 2](caracal/README.md)
+- [Focus on 3](caracal-ebpf/src/deunhide/README.md)
 
 
 ## 🚀 Setup
@@ -74,11 +76,6 @@ will hide:
 `caracal` is developed for educational purposes only
 
 <br>
-
-## Sources
-- https://eunomia.dev/tutorials/24-hide/
-- https://www.acceis.fr/ebpf-in-practice-pid-concealment-part-2/
-- https://www.unhide-forensics.info/
 
 
 ## ✍️ Authors
