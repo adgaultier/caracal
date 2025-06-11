@@ -10,7 +10,7 @@
 Caracal is a rust implementation of known eBPF [techniques](#sources) that: 
 - hide target bpf programs & maps   → won't be visible with `bpftop`, `bpftool` ...
 - hide target processes            → won't be visible with `ps`, `top`, `procs`, `ls /proc` ...
-
+- is resilient to some `unhiding` bruteforce techniques (see [here](caracal-ebpf/src/deunhide/README.md))
 <br>
 
 It targets specifically `bpf` and `getdents64` syscalls
@@ -78,6 +78,7 @@ will hide:
 ## Sources
 - https://eunomia.dev/tutorials/24-hide/
 - https://www.acceis.fr/ebpf-in-practice-pid-concealment-part-2/
+- https://www.unhide-forensics.info/
 
 
 ## ✍️ Authors
