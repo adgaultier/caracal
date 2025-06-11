@@ -1,4 +1,10 @@
-use std::{collections::HashSet, fs::OpenOptions, io::Write, path::Path};
+use std::{
+    collections::HashSet,
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader, Write},
+    path::Path,
+    process::Command,
+};
 
 use anyhow::{anyhow, Error};
 use aya::{
@@ -8,6 +14,7 @@ use aya::{
 };
 use caracal_common::MAX_PID_LENGTH;
 use log::{debug, info, warn};
+use regex::Regex;
 use sysinfo::{Pid, Process, System};
 #[inline]
 pub fn list_active_programs() -> Vec<u32> {
@@ -200,4 +207,36 @@ pub fn get_descendants(sys: &System, pid: Pid) -> (Vec<Pid>, Vec<Pid>) {
     }
 
     (descendants_pid, threads)
+}
+
+pub fn is_function_error_injection_supported() -> Result<bool, ()> {
+    let kernel = String::from_utf8(
+        Command::new("uname")
+            .arg("-r")
+            .output()
+            .map_err(|_| ())?
+            .stdout,
+    )
+    .map_err(|_| ())?
+    .trim()
+    .to_string();
+
+    let path = format!("/boot/config-{}", kernel);
+    let file = File::open(&path).map_err(|_| ())?;
+    let reader = BufReader::new(file);
+
+    let pattern = Regex::new(r"CONFIG_FUNCTION_ERROR_INJECTION").unwrap();
+
+    for line in reader.lines() {
+        let line = line.map_err(|_| ())?;
+        if pattern.is_match(&line) {
+            let splits = line.split(r"=");
+            if let Some("y") = splits.last() {
+                return Ok(true);
+            }
+        }
+    }
+    warn!("CONFIG_BPF_KPROBE_OVERRIDE is not supported by host kernel");
+    warn!("deunhide kprobes won't be set");
+    Ok(false)
 }
