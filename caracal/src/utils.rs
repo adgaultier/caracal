@@ -209,26 +209,26 @@ pub fn get_descendants(sys: &System, pid: Pid) -> (Vec<Pid>, Vec<Pid>) {
     (descendants_pid, threads)
 }
 
-pub fn is_function_error_injection_supported() -> Result<bool, ()> {
+pub fn is_function_error_injection_supported() -> Result<bool, u8> {
     let kernel = String::from_utf8(
         Command::new("uname")
             .arg("-r")
             .output()
-            .map_err(|_| ())?
+            .map_err(|_| 0)?
             .stdout,
     )
-    .map_err(|_| ())?
+    .map_err(|_| 0)?
     .trim()
     .to_string();
 
-    let path = format!("/boot/config-{}", kernel);
-    let file = File::open(&path).map_err(|_| ())?;
+    let path = format!("/boot/config-{kernel}");
+    let file = File::open(&path).map_err(|_| 0)?;
     let reader = BufReader::new(file);
 
     let pattern = Regex::new(r"CONFIG_FUNCTION_ERROR_INJECTION").unwrap();
 
     for line in reader.lines() {
-        let line = line.map_err(|_| ())?;
+        let line = line.map_err(|_| 0)?;
         if pattern.is_match(&line) {
             let splits = line.split(r"=");
             if let Some("y") = splits.last() {
