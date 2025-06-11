@@ -5,8 +5,8 @@ Based by : https://www.unhide-forensics.info/
 Here the goal is to counter brute force methods <br>
 It's a WIP, here we can test new methods on a hidden process with [tests](#tests)
 
-### Traceprobes
-Hooks on syscalls:
+### Tracepoints
+Hooked on syscalls:
 - sys_enter_statx
 - sys_enter_newfstatat
 - sys_enter_chdir
