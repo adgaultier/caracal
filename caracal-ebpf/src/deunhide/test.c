@@ -31,11 +31,11 @@ int main(int argc, char *argv[]) {
 
     sprintf(path,"/proc/%d",pid);
     ret = chdir(path);
-    printf("stat /chdir/%d return %d\n",pid, ret);
+    printf("chdir /proc/%d return %d\n",pid, ret);
 
     sprintf(path,"/proc/%d/task",pid);
     ret = chdir(path);
-    printf("stat /chdir/%d/task return %d\n",pid, ret);
+    printf("chdir /proc/%d/task return %d\n",pid, ret);
 
     ret = getsid(pid);
     printf("sid return %d\n", ret);

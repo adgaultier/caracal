@@ -14,3 +14,4 @@ which = { workspace = true }
 [[bin]]
 name = "caracal"
 path = "src/main.rs"
+

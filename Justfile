@@ -4,7 +4,7 @@ _default:
     just --list
 
 build-ebpf:
-    cd caracal-ebpf && cargo build  --release
+    cd caracal-ebpf &&  cargo build  --release
 
 run pid="1337" bpf="257,258,259" :
     just build-ebpf

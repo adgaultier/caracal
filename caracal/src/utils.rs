@@ -10,11 +10,10 @@ use anyhow::{anyhow, Error};
 use aya::{
     maps::loaded_maps,
     programs::{loaded_programs, KProbe, ProgramInfo, TracePoint},
-    Ebpf, Pod,
+    Ebpf,
 };
-use caracal_common::MAX_PID_LENGTH;
 use flate2::read::GzDecoder;
-use log::{debug, info, warn};
+use log::{info, warn};
 use regex::Regex;
 use sysinfo::{Pid, Process, System};
 #[inline]
@@ -111,28 +110,12 @@ pub struct BpfProgInfos {
     pub map_ids: Vec<u32>,
 }
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct HiddenPid {
-    bytes: [u8; MAX_PID_LENGTH as usize],
-    len: usize,
-}
-impl HiddenPid {
-    pub fn new(str_repr: &str) -> Self {
-        let mut bytes = [0u8; MAX_PID_LENGTH as usize];
-        let len = str_repr.len().min(MAX_PID_LENGTH as usize);
-        bytes[..len].copy_from_slice(str_repr.as_bytes());
-        debug!("{}", unsafe { std::str::from_utf8_unchecked(&bytes) });
-        Self { bytes, len }
-    }
-}
-unsafe impl Pod for HiddenPid {}
-
 pub fn fetch_progs_ids_map_ids(progs_info: Vec<ProgramInfo>) -> Result<BpfProgInfos, Error> {
     let mut prog_ids = vec![];
     let mut map_ids = vec![];
     for pinfo in progs_info {
         prog_ids.push(pinfo.id());
+
         if let Some(maps) = pinfo.map_ids().unwrap() {
             for mapid in maps {
                 map_ids.push(mapid);

