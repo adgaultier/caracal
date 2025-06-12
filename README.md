@@ -55,15 +55,16 @@ You can download the pre-built binaries from the [release page](https://github.c
 Run `caracal` with  root privileges:
 
 ```
-caracal --pid <pids> --bpf-prog-id <bpf-ids>
+caracal --pid <pids> --bpf-prog-id <bpf-ids> -v
 ```
 - `<pids>`: List of process IDs to hide (comma-separated, e.g., 123,456)
 - `<bpf-ids>`: List of eBPF program IDs to hide (comma-separated, e.g., 789,101)
+- `-v / --verbose`: Verbosity
 
 
 Example:
 ```
-RUST_LOG=info sudo -E caracal --pid $PPID,1337  --bpf-prog-id  23,24,26
+sudo  caracal --pid $PPID,1337  --bpf-prog-id  23,24,26 -v
 ```
 
 will hide:

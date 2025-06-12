@@ -58,7 +58,7 @@ getpriority return 0
 ```
 Meaning each test detected the pid<br>
 
-You can then run the test on a pid hidden by caracal (launch caracal with `RUST_LOG=info sudo -E caracal ..` to see the hidden pids in logs) and verify it only produces `-1` return codes, meaning it hasn't been detected.<br>
+You can then run the test on a pid hidden by caracal (launch caracal with `--verbose` flag to see the hidden pids in logs) and verify it only produces `-1` return codes, meaning it hasn't been detected.<br>
 You can inspect with strace to confirm you get only -3 (process not found errors) 
 
 ### Unhide

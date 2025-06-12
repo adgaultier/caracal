@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{env, thread, time::Duration};
 
 use aya::{maps::HashMap, EbpfLoader};
 use caracal::utils::{
@@ -18,11 +18,20 @@ struct Opt {
     pid: Vec<u32>,
     #[clap(long, value_delimiter = ',', required = false)]
     bpf_prog_id: Vec<u32>,
+    #[arg(short = 'v', long = "verbose")]
+    verbose: bool,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let Opt { pid, bpf_prog_id } = Opt::parse();
+    let Opt {
+        pid,
+        bpf_prog_id,
+        verbose,
+    } = Opt::parse();
+    if verbose {
+        env::set_var("RUST_LOG", "info");
+    }
     env_logger::init();
 
     if unsafe { libc::geteuid() } != 0 {
